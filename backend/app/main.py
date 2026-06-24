@@ -363,6 +363,14 @@ def generate_ai_embeddings(request: GenerateEmbeddingsRequest):
                 detail="No valid non-empty documents found after validation."
             )
 
+        provider = request.provider.lower()
+        warning_msg = None
+        
+        # Enforce strict Gemini limit of 100 records to prevent quota exhaustion
+        if provider == "gemini" and len(cleaned_documents) > 100:
+            cleaned_documents = cleaned_documents[:100]
+            warning_msg = "Warning: Platform limit active. Only the first 100 records were processed to stay within Gemini Free Tier limits."
+
         batch_size_used = request.batch_size or 100
         number_of_batches_processed = math.ceil(len(cleaned_documents) / batch_size_used)
         
@@ -409,6 +417,8 @@ def generate_ai_embeddings(request: GenerateEmbeddingsRequest):
             "embedding_model_used": model_used,
             "processing_duration": round(duration, 3)
         })
+        if warning_msg:
+            summary["warning"] = warning_msg
         
         return summary
     except HTTPException as he:

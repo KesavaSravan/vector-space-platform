@@ -90,12 +90,14 @@ function appReducer(state, action) {
         notice: null
       };
     case "UPLOAD_SUCCESS":
+      const ingestNotice = `Successfully ingested ${action.payload.accepted} vectors (rejected ${action.payload.rejected}).`;
+      const warningText = action.payload.warning ? `${action.payload.warning} ` : "";
       return {
         ...state,
         totalVectors: action.payload.total_vectors,
         dimension: action.payload.dimension,
         lastUploadSummary: action.payload,
-        notice: `Successfully ingested ${action.payload.accepted} vectors (rejected ${action.payload.rejected}).`
+        notice: `${warningText}${ingestNotice}`
       };
     case "REDUCTION_SUCCESS":
       return {
