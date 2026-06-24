@@ -1,43 +1,79 @@
+import os
 import json
 import requests
 from typing import List, Optional
 from fastapi import HTTPException
 
-# Lazy loaded SentenceTransformer
+# Deprecated local models dict (no longer used since we use HF Inference API)
 _transformer_models = {}
 
-def get_sentence_transformer_embeddings(documents: List[str], model_name: str = "all-MiniLM-L6-v2") -> List[List[float]]:
+def get_sentence_transformer_embeddings(
+    documents: List[str],
+    model_name: str = "all-MiniLM-L6-v2",
+    api_key: Optional[str] = None
+) -> List[List[float]]:
     """
-    Generates embeddings locally using Sentence Transformers.
+    Generates sentence embeddings using the Hugging Face Serverless Inference API
+    instead of running models locally (saving RAM/CPU and removing torch dependency).
     """
-    try:
-        from sentence_transformers import SentenceTransformer
-    except ImportError:
-        raise HTTPException(
-            status_code=400,
-            detail="The 'sentence-transformers' package is not installed on the backend. Please install it or use OpenAI/Azure providers."
-        )
+    # Map short names like "all-MiniLM-L6-v2" to "sentence-transformers/all-MiniLM-L6-v2"
+    full_model_name = model_name
+    if "/" not in full_model_name:
+        full_model_name = f"sentence-transformers/{model_name}"
+
+    url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{full_model_name}"
     
-    global _transformer_models
-    if model_name not in _transformer_models:
-        try:
-            # Load model
-            _transformer_models[model_name] = SentenceTransformer(model_name)
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to load sentence-transformer model '{model_name}': {str(e)}"
-            )
+    # Retrieve Hugging Face API key
+    token = api_key or os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY")
+    
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    payload = {
+        "inputs": documents,
+        "options": {
+            "wait_for_model": True
+        }
+    }
 
     try:
-        model = _transformer_models[model_name]
-        embeddings = model.encode(documents)
-        # Convert numpy array to list of lists of floats
-        return embeddings.tolist()
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        
+        if response.status_code != 200:
+            err_msg = response.text
+            try:
+                err_json = response.json()
+                if "error" in err_json:
+                    err_msg = err_json["error"]
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Hugging Face API error: {err_msg}"
+            )
+
+        data = response.json()
+        
+        if not isinstance(data, list) or len(data) == 0:
+            raise HTTPException(
+                status_code=502,
+                detail="Invalid response format from Hugging Face Inference API (expected a list)."
+            )
+            
+        return data
+
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to connect to Hugging Face Inference API: {str(e)}"
+        )
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(
             status_code=500,
-            detail=f"Sentence-transformer embedding generation failed: {str(e)}"
+            detail=f"An unexpected error occurred during Hugging Face embedding generation: {str(e)}"
         )
 
 def get_openai_embeddings(
@@ -163,7 +199,7 @@ def generate_embeddings(
 
     provider = provider.lower()
     if provider == "sentence-transformers":
-        return get_sentence_transformer_embeddings(documents, model or "all-MiniLM-L6-v2")
+        return get_sentence_transformer_embeddings(documents, model or "all-MiniLM-L6-v2", api_key)
     elif provider == "openai":
         return get_openai_embeddings(documents, api_key, model)
     elif provider == "azure":
