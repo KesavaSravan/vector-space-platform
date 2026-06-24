@@ -36,7 +36,7 @@ export default function UploadPanel() {
 
   const [aiOpen, setAiOpen] = useState(false);
   const [provider, setProvider] = useState("sentence-transformers");
-  const [model, setModel] = useState("all-MiniLM-L6-v2");
+  const [model, setModel] = useState("gemini-embedding-001");
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [azureEndpoint, setAzureEndpoint] = useState("");
@@ -183,13 +183,13 @@ export default function UploadPanel() {
                 onChange={(e) => {
                   setProvider(e.target.value);
                   if (e.target.value === "sentence-transformers") {
-                    setModel("all-MiniLM-L6-v2");
+                    setModel("gemini-embedding-001");
                   } else {
                     setModel(e.target.value === "openai" ? "text-embedding-3-small" : "");
                   }
                 }}
               >
-                <MenuItem value="sentence-transformers">Sentence Transformers (Local)</MenuItem>
+                <MenuItem value="sentence-transformers">Gemini (Primary) / Local Fallback</MenuItem>
                 <MenuItem value="openai">OpenAI (Cloud API)</MenuItem>
                 <MenuItem value="azure">Azure OpenAI</MenuItem>
               </Select>
@@ -204,7 +204,7 @@ export default function UploadPanel() {
               fullWidth
               placeholder={
                 provider === "sentence-transformers"
-                  ? "all-MiniLM-L6-v2"
+                  ? "gemini-embedding-001"
                   : "text-embedding-3-small"
               }
             />
