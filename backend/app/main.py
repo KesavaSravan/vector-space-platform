@@ -341,31 +341,53 @@ def get_store_statistics():
 def generate_ai_embeddings(request: GenerateEmbeddingsRequest):
     """
     Generates embeddings from documents using the specified provider,
-    adds them to store, and returns upload summary metadata.
+    adds them to store, and returns upload summary metadata along with processing statistics.
     """
+    import math
+    import time
     try:
-        embeddings = generate_embeddings(
+        raw_documents = request.documents or []
+        total_records_processed = len(raw_documents)
+        
+        # Input validation: Trim whitespace, skip null/empty strings
+        cleaned_documents = []
+        for doc in raw_documents:
+            if doc is not None:
+                trimmed = str(doc).strip()
+                if trimmed:
+                    cleaned_documents.append(trimmed)
+                    
+        if not cleaned_documents:
+            raise HTTPException(
+                status_code=400, 
+                detail="No valid non-empty documents found after validation."
+            )
+
+        batch_size_used = request.batch_size or 100
+        number_of_batches_processed = math.ceil(len(cleaned_documents) / batch_size_used)
+        
+        t0 = time.time()
+        embeddings, model_used = generate_embeddings(
             provider=request.provider,
-            documents=request.documents,
+            documents=cleaned_documents,
             model=request.model,
             api_key=request.api_key,
             azure_endpoint=request.azure_endpoint,
-            azure_deployment=request.azure_deployment
+            azure_deployment=request.azure_deployment,
+            batch_size=batch_size_used
         )
+        duration = time.time() - t0
         
         # Ingest as new VectorInputs
         new_vectors = []
-        for idx, doc in enumerate(request.documents):
-            # Create a unique short id
+        for idx, doc in enumerate(cleaned_documents):
             vid = f"doc_{store.get_total_count() + idx + 1:04d}"
-            # Extract first 30 chars as label
             label = doc[:30] + "..." if len(doc) > 30 else doc
             
-            # Form metadata
             metadata = {
                 "source": "AI Generation Mode",
                 "text_snippet": doc,
-                "severity": "Medium", # Default
+                "severity": "Medium",
                 "timestamp": "2026-06-23T12:00:00Z"
             }
             
@@ -376,8 +398,18 @@ def generate_ai_embeddings(request: GenerateEmbeddingsRequest):
                 metadata=metadata
             ))
             
-            
         summary = store.add_vectors(new_vectors)
+        
+        # Add the requested additional keys
+        summary.update({
+            "total_records_processed": total_records_processed,
+            "total_embeddings_generated": len(embeddings),
+            "batch_size_used": batch_size_used,
+            "number_of_batches_processed": number_of_batches_processed,
+            "embedding_model_used": model_used,
+            "processing_duration": round(duration, 3)
+        })
+        
         return summary
     except HTTPException as he:
         raise he

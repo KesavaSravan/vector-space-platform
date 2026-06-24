@@ -3,7 +3,7 @@ import json
 import logging
 import time
 import requests
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from fastapi import HTTPException
 
 try:
@@ -89,12 +89,12 @@ def run_startup_embedding_check() -> None:
     logger.info(f"Embedding Startup Diagnostic: Running test embedding using provider '{provider}'...")
     try:
         t0 = time.time()
-        embs = generate_embeddings(provider=provider, documents=test_doc)
+        embs, model_used = generate_embeddings(provider=provider, documents=test_doc)
         elapsed = time.time() - t0
         if embs and len(embs) > 0:
             logger.info(
                 f"Embedding Startup Diagnostic SUCCESS: Generated 1 embedding of dimension {len(embs[0])} "
-                f"using provider '{provider}' in {elapsed:.2f}s"
+                f"using model '{model_used}' (provider: '{provider}') in {elapsed:.2f}s"
             )
         else:
             logger.error(f"Embedding Startup Diagnostic FAILED: No embeddings returned for provider '{provider}'")
@@ -104,11 +104,11 @@ def run_startup_embedding_check() -> None:
             logger.info("Embedding Startup Diagnostic: Attempting diagnostic fallback check using sentence-transformers...")
             try:
                 t0 = time.time()
-                embs = generate_embeddings(provider="sentence-transformers", documents=test_doc)
+                embs, model_used = generate_embeddings(provider="sentence-transformers", documents=test_doc)
                 elapsed = time.time() - t0
                 logger.info(
                     f"Embedding Startup Diagnostic SUCCESS (Diagnostic Fallback): Generated 1 embedding of dimension "
-                    f"{len(embs[0])} using sentence-transformers in {elapsed:.2f}s"
+                    f"{len(embs[0])} using model '{model_used}' in {elapsed:.2f}s"
                 )
             except Exception as fe:
                 logger.error(f"Embedding Startup Diagnostic FAILED (Diagnostic Fallback): {str(fe)}")
@@ -150,11 +150,12 @@ def get_local_model() -> object:
 
 def get_gemini_embeddings(
     documents: List[str],
-    model_name: str = "gemini-embedding-001"
+    model_name: str = "gemini-embedding-001",
+    batch_size: int = 100
 ) -> List[List[float]]:
     """
-    Generates embeddings using Google GenAI SDK with gemini-embedding-001.
-    If it fails, raises an HTTPException immediately.
+    Generates embeddings using Google GenAI SDK with gemini-embedding-001 in batches.
+    If it fails after retries, raises an exception.
     """
     if not documents:
         return []
@@ -173,45 +174,65 @@ def get_gemini_embeddings(
             detail="Gemini Client could not be initialized. Please check that 'google-genai' is installed."
         )
 
-    logger.info("Embedding Provider: Gemini | Starting embedding generation...")
-    max_retries = 3
-    retry_delay = 1.0
+    # Batch processing
+    batches = [documents[i:i + batch_size] for i in range(0, len(documents), batch_size)]
+    logger.info(f"Gemini API: Processing {len(documents)} records in {len(batches)} batches (size: {batch_size})")
     
-    for attempt in range(1, max_retries + 1):
-        try:
-            t0 = time.time()
-            result = client.models.embed_content(
-                model=model_name,
-                contents=documents
-            )
-            elapsed = time.time() - t0
-            embeddings = [emb.values for emb in result.embeddings]
-            
-            logger.info(
-                f"Embedding Provider: Gemini | Successfully generated {len(embeddings)} "
-                f"embeddings in {elapsed:.2f}s"
-            )
-            return embeddings
-        except Exception as api_err:
-            logger.warning(
-                f"Gemini API call attempt {attempt}/{max_retries} failed: {str(api_err)}"
-            )
-            if attempt == max_retries:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Gemini API error after {max_retries} attempts: {str(api_err)}"
+    all_embeddings = []
+    max_retries = 3
+    retry_delay = 2.0
+    
+    for batch_idx, batch in enumerate(batches, 1):
+        logger.info(f"Gemini API: Processing batch {batch_idx}/{len(batches)} (size: {len(batch)})")
+        batch_success = False
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                t0 = time.time()
+                result = client.models.embed_content(
+                    model=model_name,
+                    contents=batch
                 )
-            time.sleep(retry_delay * attempt)
-
-    raise HTTPException(status_code=500, detail="Unexpected failure during Gemini embedding generation.")
+                elapsed = time.time() - t0
+                
+                embs = [emb.values for emb in result.embeddings]
+                logger.info(f"Gemini API: Batch {batch_idx} success, generated {len(embs)} embeddings in {elapsed:.2f}s")
+                all_embeddings.extend(embs)
+                batch_success = True
+                break
+            except Exception as api_err:
+                err_msg = str(api_err)
+                is_429 = "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg
+                
+                sleep_time = retry_delay * (2 ** (attempt - 1))
+                if is_429:
+                    sleep_time += 5.0
+                    logger.warning(
+                        f"Gemini API Rate Limit (429) hit on batch {batch_idx}, attempt {attempt}/{max_retries}. "
+                        f"Waiting {sleep_time:.2f}s before retry..."
+                    )
+                else:
+                    logger.warning(
+                        f"Gemini API batch {batch_idx} attempt {attempt}/{max_retries} failed: {err_msg}. "
+                        f"Retrying in {sleep_time:.2f}s..."
+                    )
+                
+                if attempt == max_retries:
+                    logger.error(f"Gemini API failed all {max_retries} attempts for batch {batch_idx}.")
+                    raise api_err
+                    
+                time.sleep(sleep_time)
+                
+    return all_embeddings
 
 def get_sentence_transformer_embeddings(
     documents: List[str],
     model_name: str = "all-MiniLM-L6-v2",
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    batch_size: int = 100
 ) -> List[List[float]]:
     """
-    Generates embeddings using the local sentence-transformers/all-MiniLM-L6-v2 model.
+    Generates embeddings using the local sentence-transformers/all-MiniLM-L6-v2 model in batches.
     """
     if not documents:
         return []
@@ -219,14 +240,23 @@ def get_sentence_transformer_embeddings(
     try:
         t0 = time.time()
         model = get_local_model()
-        logger.info("Embedding Provider: Local MiniLM | Starting embedding generation...")
-        raw_embeddings = model.encode(documents)
+        
+        # Batch processing
+        batches = [documents[i:i + batch_size] for i in range(0, len(documents), batch_size)]
+        logger.info(f"Local MiniLM: Processing {len(documents)} records in {len(batches)} batches (size: {batch_size})")
+        
+        all_embeddings = []
+        for batch_idx, batch in enumerate(batches, 1):
+            logger.info(f"Local MiniLM: Processing batch {batch_idx}/{len(batches)} (size: {len(batch)})")
+            raw_embeddings = model.encode(batch)
+            all_embeddings.extend(raw_embeddings.tolist())
+            
         elapsed = time.time() - t0
         logger.info(
             f"Embedding Provider: Local MiniLM | Successfully generated {len(documents)} "
             f"embeddings in {elapsed:.2f}s"
         )
-        return raw_embeddings.tolist()
+        return all_embeddings
     except Exception as err:
         logger.error(f"Local MiniLM embedding generation failed: {str(err)}")
         raise HTTPException(
@@ -347,22 +377,53 @@ def generate_embeddings(
     model: Optional[str] = None,
     api_key: Optional[str] = None,
     azure_endpoint: Optional[str] = None,
-    azure_deployment: Optional[str] = None
-) -> List[List[float]]:
+    azure_deployment: Optional[str] = None,
+    batch_size: int = 100
+) -> Tuple[List[List[float]], str]:
     """
     Orchestrator to generate embeddings based on provider selection.
+    Returns a tuple of (embeddings, model_used).
     """
     if not documents:
-        return []
+        return [], ""
 
     provider = provider.lower()
+    
     if provider == "gemini":
-        return get_gemini_embeddings(documents, model or "gemini-embedding-001")
+        model_name = model or "gemini-embedding-001"
+        try:
+            embeddings = get_gemini_embeddings(documents, model_name, batch_size)
+            return embeddings, model_name
+        except Exception as e:
+            logger.warning(
+                f"Gemini embedding generation failed after retries: {str(e)}. "
+                "Falling back to local sentence-transformers/all-MiniLM-L6-v2..."
+            )
+            logger.info("Embedding Fallback: Using local Sentence Transformers model 'all-MiniLM-L6-v2' instead.")
+            embeddings = get_sentence_transformer_embeddings(documents, "all-MiniLM-L6-v2", api_key, batch_size)
+            return embeddings, "all-MiniLM-L6-v2"
+            
     elif provider == "sentence-transformers":
-        return get_sentence_transformer_embeddings(documents, model or "all-MiniLM-L6-v2", api_key)
+        model_name = model or "all-MiniLM-L6-v2"
+        embeddings = get_sentence_transformer_embeddings(documents, model_name, api_key, batch_size)
+        return embeddings, model_name
+        
     elif provider == "openai":
-        return get_openai_embeddings(documents, api_key, model)
+        model_name = model or "text-embedding-3-small"
+        batches = [documents[i:i + batch_size] for i in range(0, len(documents), batch_size)]
+        all_embeddings = []
+        for batch in batches:
+            embs = get_openai_embeddings(batch, api_key, model_name)
+            all_embeddings.extend(embs)
+        return all_embeddings, model_name
+        
     elif provider == "azure":
-        return get_azure_openai_embeddings(documents, api_key, azure_endpoint, azure_deployment)
+        batches = [documents[i:i + batch_size] for i in range(0, len(documents), batch_size)]
+        all_embeddings = []
+        for batch in batches:
+            embs = get_azure_openai_embeddings(batch, api_key, azure_endpoint, azure_deployment)
+            all_embeddings.extend(embs)
+        return all_embeddings, azure_deployment or "azure-deployment"
+        
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported embedding provider '{provider}'.")
