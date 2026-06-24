@@ -105,8 +105,39 @@ Can be uploaded as:
 
 ---
 
+## Embedding Provider Configuration
+
+The platform supports multiple AI text vectorization providers which can be chosen interactively in the frontend.
+
+### Provider Details
+1. **Gemini (Cloud API)**:
+   - Model: `gemini-embedding-001` (768 dimensions)
+   - Configuration: Read from the `GEMINI_API_KEY` environment variable.
+2. **Sentence Transformers (Local)**:
+   - Model: `all-MiniLM-L6-v2` (384 dimensions)
+   - Running locally and cached on the backend (requires no API keys).
+3. **OpenAI (Cloud API)** & **Azure OpenAI**:
+   - Provide credentials directly in the frontend panel (never stored).
+
+### Configuring `GEMINI_API_KEY`
+- **Docker Compose**: Create a `.env` file in the project root directory and add:
+  ```env
+  GEMINI_API_KEY=your_api_key_here
+  ```
+- **Local Dev**: You can place `.env` in the `backend/` directory or set it as a system environment variable.
+
+### Diagnostic Tools
+The backend performs startup configuration checks and diagnostic runs on startup. You can also query the API endpoint to verify your setup:
+- **Diagnostic Endpoint**: `GET http://localhost:8000/embedding-diagnostic`
+
+---
+
 ## Troubleshooting & Fallbacks
 
-- **UMAP Installation**: If UMAP installation fails on your system due to C++ compilation issues, standard PCA or t-SNE algorithms will continue to function. The backend will return a helpful error indicating the lack of `umap-learn`.
-- **FAISS Support**: If FAISS cannot be built on your machine, similarity search will gracefully degrade to a vectorized NumPy-based search.
+- **UMAP & FAISS Installation**: If UMAP or FAISS installation fails due to system compilation requirements, standard PCA/t-SNE algorithms and vectorized NumPy-based search will continue to function seamlessly as fallbacks.
 - **Port Conflicts**: Ensure ports `3000` and `8000` are free on your host machine before starting docker compose.
+- **Docker Frontend Cache**: If frontend changes (such as the provider selection list) do not show up in the browser, ensure you rebuild the Docker container images:
+  ```bash
+  docker compose down
+  docker compose up --build
+  ```

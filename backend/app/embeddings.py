@@ -1,15 +1,25 @@
 import os
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
 import json
 import logging
 import time
 import requests
 from typing import List, Optional
 from fastapi import HTTPException
+
+try:
+    from dotenv import load_dotenv
+    # Robust dotenv loading across relative directories
+    load_dotenv()
+    # Parent directory (e.g. backend/ from backend/app/)
+    parent_env = os.path.join(os.path.dirname(__file__), "..", ".env")
+    if os.path.exists(parent_env):
+        load_dotenv(dotenv_path=parent_env)
+    # Grandparent directory (e.g. root/ from backend/app/)
+    grandparent_env = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+    if os.path.exists(grandparent_env):
+        load_dotenv(dotenv_path=grandparent_env)
+except ImportError:
+    pass
 
 # Configure logging
 logger = logging.getLogger("embeddings")
@@ -27,21 +37,81 @@ _local_model = None
 def validate_env() -> None:
     """
     Validates environment variables at application startup.
-    Logs warning if GEMINI_API_KEY is not configured.
+    Logs loading process and selected provider.
     
     Setting GEMINI_API_KEY:
     - Local: Add GEMINI_API_KEY="your_api_key_here" to your local environment variables or .env file.
     - Render/Railway: Add GEMINI_API_KEY to the "Environment Variables" tab in your service settings dashboard.
     - Vercel: Add GEMINI_API_KEY under Project Settings > Environment Variables.
     """
+    # Check for .env file in expected locations
+    possible_paths = [
+        os.path.join(os.getcwd(), ".env"),
+        os.path.join(os.path.dirname(__file__), "..", ".env"),
+        os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+    ]
+    
+    env_found = False
+    found_path = ""
+    for path in possible_paths:
+        if os.path.exists(path):
+            env_found = True
+            found_path = os.path.abspath(path)
+            break
+            
+    if env_found:
+        logger.info(f"Embedding Startup: .env file found at '{found_path}'")
+    else:
+        logger.info("Embedding Startup: No .env file found in standard search paths (will rely on system environment variables)")
+
     gemini_key = os.getenv("GEMINI_API_KEY")
     if gemini_key:
-        logger.info("Embedding Startup Check: GEMINI_API_KEY is configured. Gemini is the active embedding provider.")
+        masked_key = gemini_key[:8] + "..." + gemini_key[-4:] if len(gemini_key) > 12 else "configured (short key)"
+        logger.info(f"Embedding Startup: GEMINI_API_KEY loaded successfully ({masked_key})")
+        logger.info("Embedding Startup: Active Default Provider is Gemini (Cloud API)")
     else:
-        logger.warning(
-            "Embedding Startup Check: GEMINI_API_KEY is missing! "
-            "The system will automatically run in Local Fallback mode using sentence-transformers/all-MiniLM-L6-v2."
-        )
+        logger.warning("Embedding Startup Check: GEMINI_API_KEY is missing!")
+        logger.info("Embedding Startup: Active Default Provider is Local MiniLM (all-MiniLM-L6-v2)")
+
+def run_startup_embedding_check() -> None:
+    """
+    Runs a test embedding generation on startup to confirm the selected provider is functional.
+    Does not crash the application if it fails.
+    """
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    test_doc = ["Startup diagnostic test string."]
+    
+    if gemini_key:
+        provider = "gemini"
+    else:
+        provider = "sentence-transformers"
+        
+    logger.info(f"Embedding Startup Diagnostic: Running test embedding using provider '{provider}'...")
+    try:
+        t0 = time.time()
+        embs = generate_embeddings(provider=provider, documents=test_doc)
+        elapsed = time.time() - t0
+        if embs and len(embs) > 0:
+            logger.info(
+                f"Embedding Startup Diagnostic SUCCESS: Generated 1 embedding of dimension {len(embs[0])} "
+                f"using provider '{provider}' in {elapsed:.2f}s"
+            )
+        else:
+            logger.error(f"Embedding Startup Diagnostic FAILED: No embeddings returned for provider '{provider}'")
+    except Exception as e:
+        logger.error(f"Embedding Startup Diagnostic FAILED for provider '{provider}': {str(e)}")
+        if provider == "gemini":
+            logger.info("Embedding Startup Diagnostic: Attempting diagnostic fallback check using sentence-transformers...")
+            try:
+                t0 = time.time()
+                embs = generate_embeddings(provider="sentence-transformers", documents=test_doc)
+                elapsed = time.time() - t0
+                logger.info(
+                    f"Embedding Startup Diagnostic SUCCESS (Diagnostic Fallback): Generated 1 embedding of dimension "
+                    f"{len(embs[0])} using sentence-transformers in {elapsed:.2f}s"
+                )
+            except Exception as fe:
+                logger.error(f"Embedding Startup Diagnostic FAILED (Diagnostic Fallback): {str(fe)}")
 
 def get_gemini_client() -> Optional[object]:
     """
@@ -78,70 +148,74 @@ def get_local_model() -> object:
             raise RuntimeError(f"Failed to load local fallback model: {str(e)}")
     return _local_model
 
+def get_gemini_embeddings(
+    documents: List[str],
+    model_name: str = "gemini-embedding-001"
+) -> List[List[float]]:
+    """
+    Generates embeddings using Google GenAI SDK with gemini-embedding-001.
+    If it fails, raises an HTTPException immediately.
+    """
+    if not documents:
+        return []
+
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        raise HTTPException(
+            status_code=400,
+            detail="GEMINI_API_KEY environment variable is not set. Please configure it to use Gemini embeddings."
+        )
+
+    client = get_gemini_client()
+    if not client:
+        raise HTTPException(
+            status_code=500,
+            detail="Gemini Client could not be initialized. Please check that 'google-genai' is installed."
+        )
+
+    logger.info("Embedding Provider: Gemini | Starting embedding generation...")
+    max_retries = 3
+    retry_delay = 1.0
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            t0 = time.time()
+            result = client.models.embed_content(
+                model=model_name,
+                contents=documents
+            )
+            elapsed = time.time() - t0
+            embeddings = [emb.values for emb in result.embeddings]
+            
+            logger.info(
+                f"Embedding Provider: Gemini | Successfully generated {len(embeddings)} "
+                f"embeddings in {elapsed:.2f}s"
+            )
+            return embeddings
+        except Exception as api_err:
+            logger.warning(
+                f"Gemini API call attempt {attempt}/{max_retries} failed: {str(api_err)}"
+            )
+            if attempt == max_retries:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Gemini API error after {max_retries} attempts: {str(api_err)}"
+                )
+            time.sleep(retry_delay * attempt)
+
+    raise HTTPException(status_code=500, detail="Unexpected failure during Gemini embedding generation.")
+
 def get_sentence_transformer_embeddings(
     documents: List[str],
     model_name: str = "all-MiniLM-L6-v2",
     api_key: Optional[str] = None
 ) -> List[List[float]]:
     """
-    Generates embeddings using a hybrid strategy:
-    1. Primary: Gemini API (gemini-embedding-001) using Google GenAI SDK.
-    2. Fallback: Local sentence-transformers/all-MiniLM-L6-v2.
+    Generates embeddings using the local sentence-transformers/all-MiniLM-L6-v2 model.
     """
     if not documents:
         return []
 
-    # Retrieve the API key from environment variable exclusively
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    
-    if gemini_key:
-        try:
-            client = get_gemini_client()
-            if client:
-                logger.info("Embedding Provider: Gemini | Starting embedding generation...")
-                
-                # Retry logic for Gemini API calls
-                max_retries = 3
-                retry_delay = 1.0
-                embeddings = None
-                
-                for attempt in range(1, max_retries + 1):
-                    try:
-                        t0 = time.time()
-                        # Call gemini-embedding-001 using Google GenAI SDK
-                        result = client.models.embed_content(
-                            model="gemini-embedding-001",
-                            contents=documents
-                        )
-                        elapsed = time.time() - t0
-                        
-                        # Extract float lists from response
-                        embeddings = [emb.values for emb in result.embeddings]
-                        
-                        logger.info(
-                            f"Embedding Provider: Gemini | Successfully generated {len(embeddings)} "
-                            f"embeddings in {elapsed:.2f}s"
-                        )
-                        break
-                    except Exception as api_err:
-                        logger.warning(
-                            f"Gemini API call attempt {attempt}/{max_retries} failed: {str(api_err)}"
-                        )
-                        if attempt == max_retries:
-                            raise api_err
-                        time.sleep(retry_delay * attempt)
-                
-                if embeddings:
-                    return embeddings
-            else:
-                logger.warning("Gemini Client could not be initialized.")
-        except Exception as e:
-            logger.warning(
-                f"Fallback Event: Gemini API failed to generate embeddings. "
-                f"API Error: {str(e)}. Switching to local MiniLM fallback..."
-            )
-
-    # Local fallback path
     try:
         t0 = time.time()
         model = get_local_model()
@@ -153,11 +227,11 @@ def get_sentence_transformer_embeddings(
             f"embeddings in {elapsed:.2f}s"
         )
         return raw_embeddings.tolist()
-    except Exception as fallback_err:
-        logger.error(f"Local MiniLM embedding generation failed: {str(fallback_err)}")
+    except Exception as err:
+        logger.error(f"Local MiniLM embedding generation failed: {str(err)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Both Gemini and local fallback embedding generation failed: {str(fallback_err)}"
+            detail=f"Local MiniLM embedding generation failed: {str(err)}"
         )
 
 def get_openai_embeddings(
@@ -282,7 +356,9 @@ def generate_embeddings(
         return []
 
     provider = provider.lower()
-    if provider == "sentence-transformers":
+    if provider == "gemini":
+        return get_gemini_embeddings(documents, model or "gemini-embedding-001")
+    elif provider == "sentence-transformers":
         return get_sentence_transformer_embeddings(documents, model or "all-MiniLM-L6-v2", api_key)
     elif provider == "openai":
         return get_openai_embeddings(documents, api_key, model)

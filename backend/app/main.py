@@ -39,6 +39,8 @@ app = FastAPI(
 @app.on_event("startup")
 def startup_event():
     validate_env()
+    from app.embeddings import run_startup_embedding_check
+    run_startup_embedding_check()
 
 # Enable CORS for all origins (demo mode)
 app.add_middleware(
@@ -374,6 +376,7 @@ def generate_ai_embeddings(request: GenerateEmbeddingsRequest):
                 metadata=metadata
             ))
             
+            
         summary = store.add_vectors(new_vectors)
         return summary
     except HTTPException as he:
@@ -383,3 +386,41 @@ def generate_ai_embeddings(request: GenerateEmbeddingsRequest):
             status_code=500,
             detail=f"Embeddings generation failed: {str(e)}"
         )
+
+@app.get("/embedding-diagnostic")
+def embedding_diagnostic():
+    """
+    Diagnostic endpoint to check the state of embedding providers and env loading.
+    """
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    has_gemini = gemini_key is not None
+    
+    # Mask key if present
+    masked_key = None
+    if has_gemini:
+        masked_key = gemini_key[:8] + "..." + gemini_key[-4:] if len(gemini_key) > 12 else "configured (short key)"
+        
+    status_info = {
+        "gemini_api_key_configured": has_gemini,
+        "gemini_api_key_masked": masked_key,
+        "active_default_provider": "gemini" if has_gemini else "sentence-transformers",
+        "working_directory": os.getcwd(),
+        "env_search_paths": [
+            os.path.join(os.getcwd(), ".env"),
+            os.path.join(os.path.dirname(__file__), "..", ".env"),
+            os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+        ]
+    }
+    
+    # Test file paths
+    status_info["found_env_files"] = [
+        path for path in status_info["env_search_paths"] if os.path.exists(path)
+    ]
+    
+    try:
+        from sentence_transformers import SentenceTransformer
+        status_info["local_minilm_status"] = "available"
+    except Exception as e:
+        status_info["local_minilm_status"] = f"unavailable: {str(e)}"
+        
+    return status_info

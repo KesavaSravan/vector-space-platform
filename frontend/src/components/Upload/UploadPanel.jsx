@@ -35,7 +35,7 @@ export default function UploadPanel() {
   } = useAppActions();
 
   const [aiOpen, setAiOpen] = useState(false);
-  const [provider, setProvider] = useState("sentence-transformers");
+  const [provider, setProvider] = useState("gemini");
   const [model, setModel] = useState("gemini-embedding-001");
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -181,15 +181,21 @@ export default function UploadPanel() {
                 value={provider}
                 label="Provider"
                 onChange={(e) => {
-                  setProvider(e.target.value);
-                  if (e.target.value === "sentence-transformers") {
+                  const val = e.target.value;
+                  setProvider(val);
+                  if (val === "gemini") {
                     setModel("gemini-embedding-001");
+                  } else if (val === "sentence-transformers") {
+                    setModel("all-MiniLM-L6-v2");
+                  } else if (val === "openai") {
+                    setModel("text-embedding-3-small");
                   } else {
-                    setModel(e.target.value === "openai" ? "text-embedding-3-small" : "");
+                    setModel("");
                   }
                 }}
               >
-                <MenuItem value="sentence-transformers">Gemini (Primary) / Local Fallback</MenuItem>
+                <MenuItem value="gemini">Gemini (Cloud API)</MenuItem>
+                <MenuItem value="sentence-transformers">Sentence Transformers (Local)</MenuItem>
                 <MenuItem value="openai">OpenAI (Cloud API)</MenuItem>
                 <MenuItem value="azure">Azure OpenAI</MenuItem>
               </Select>
@@ -203,14 +209,16 @@ export default function UploadPanel() {
               size="small"
               fullWidth
               placeholder={
-                provider === "sentence-transformers"
+                provider === "gemini"
                   ? "gemini-embedding-001"
+                  : provider === "sentence-transformers"
+                  ? "all-MiniLM-L6-v2"
                   : "text-embedding-3-small"
               }
             />
 
             {/* API Key */}
-            {provider !== "sentence-transformers" && (
+            {provider !== "sentence-transformers" && provider !== "gemini" && (
               <TextField
                 label="API Key"
                 value={apiKey}
