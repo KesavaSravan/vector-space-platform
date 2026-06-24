@@ -22,7 +22,7 @@ from app.ingest import parse_json_data, parse_csv_data
 from app.reduction import reduce_dimensions
 from app.clustering import run_clustering
 from app.similarity import find_similar_vectors
-from app.embeddings import generate_embeddings
+from app.embeddings import generate_embeddings, validate_env
 from app.analytics import calculate_statistics
 
 app = FastAPI(
@@ -30,6 +30,10 @@ app = FastAPI(
     description="Backend API for vector uploads, clustering, dimensionality reduction, similarity search, and analytics",
     version="1.0.0"
 )
+
+@app.on_event("startup")
+def startup_event():
+    validate_env()
 
 # Enable CORS for all origins (demo mode)
 app.add_middleware(

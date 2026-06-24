@@ -1,11 +1,77 @@
 import os
 import json
+import logging
+import time
 import requests
 from typing import List, Optional
 from fastapi import HTTPException
 
-# Deprecated local models dict (no longer used since we use HF Inference API)
-_transformer_models = {}
+# Configure logging
+logger = logging.getLogger("embeddings")
+# Ensure logger has a handler if not already configured by fastapi
+if not logger.handlers:
+    logger.setLevel(logging.INFO)
+    ch = logging.StreamHandler()
+    ch.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(ch)
+
+# Global variables for caching clients and models to optimize production usage
+_gemini_client = None
+_local_model = None
+
+def validate_env() -> None:
+    """
+    Validates environment variables at application startup.
+    Logs warning if GEMINI_API_KEY is not configured.
+    
+    Setting GEMINI_API_KEY:
+    - Local: Add GEMINI_API_KEY="your_api_key_here" to your local environment variables or .env file.
+    - Render/Railway: Add GEMINI_API_KEY to the "Environment Variables" tab in your service settings dashboard.
+    - Vercel: Add GEMINI_API_KEY under Project Settings > Environment Variables.
+    """
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if gemini_key:
+        logger.info("Embedding Startup Check: GEMINI_API_KEY is configured. Gemini is the active embedding provider.")
+    else:
+        logger.warning(
+            "Embedding Startup Check: GEMINI_API_KEY is missing! "
+            "The system will automatically run in Local Fallback mode using sentence-transformers/all-MiniLM-L6-v2."
+        )
+
+def get_gemini_client() -> Optional[object]:
+    """
+    Lazy-loads and caches the Google GenAI client instance.
+    """
+    global _gemini_client
+    if _gemini_client is None:
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_key:
+            return None
+        try:
+            from google import genai
+            # Initialize the client once and reuse it
+            _gemini_client = genai.Client(api_key=gemini_key)
+        except ImportError:
+            logger.error("Failed to import 'google-genai'. Please make sure it is installed.")
+            return None
+    return _gemini_client
+
+def get_local_model() -> object:
+    """
+    Lazy-loads and caches the local SentenceTransformer fallback model in memory.
+    """
+    global _local_model
+    if _local_model is None:
+        logger.info("Embedding Provider: Local MiniLM | Model not in memory. Loading all-MiniLM-L6-v2 lazily...")
+        t0 = time.time()
+        try:
+            from sentence_transformers import SentenceTransformer
+            _local_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+            logger.info(f"Loaded sentence-transformers/all-MiniLM-L6-v2 in {time.time() - t0:.2f}s")
+        except Exception as e:
+            logger.error(f"Failed to load sentence-transformers/all-MiniLM-L6-v2: {str(e)}")
+            raise RuntimeError(f"Failed to load local fallback model: {str(e)}")
+    return _local_model
 
 def get_sentence_transformer_embeddings(
     documents: List[str],
@@ -13,67 +79,80 @@ def get_sentence_transformer_embeddings(
     api_key: Optional[str] = None
 ) -> List[List[float]]:
     """
-    Generates sentence embeddings using the Hugging Face Serverless Inference API
-    instead of running models locally (saving RAM/CPU and removing torch dependency).
+    Generates embeddings using a hybrid strategy:
+    1. Primary: Gemini API (gemini-embedding-001) using Google GenAI SDK.
+    2. Fallback: Local sentence-transformers/all-MiniLM-L6-v2.
     """
-    # Map short names like "all-MiniLM-L6-v2" to "sentence-transformers/all-MiniLM-L6-v2"
-    full_model_name = model_name
-    if "/" not in full_model_name:
-        full_model_name = f"sentence-transformers/{model_name}"
+    if not documents:
+        return []
 
-    url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{full_model_name}"
+    # Retrieve the API key from environment variable exclusively
+    gemini_key = os.getenv("GEMINI_API_KEY")
     
-    # Retrieve Hugging Face API key
-    token = api_key or os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY")
-    
-    headers = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+    if gemini_key:
+        try:
+            client = get_gemini_client()
+            if client:
+                logger.info("Embedding Provider: Gemini | Starting embedding generation...")
+                
+                # Retry logic for Gemini API calls
+                max_retries = 3
+                retry_delay = 1.0
+                embeddings = None
+                
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        t0 = time.time()
+                        # Call gemini-embedding-001 using Google GenAI SDK
+                        result = client.models.embed_content(
+                            model="gemini-embedding-001",
+                            contents=documents
+                        )
+                        elapsed = time.time() - t0
+                        
+                        # Extract float lists from response
+                        embeddings = [emb.values for emb in result.embeddings]
+                        
+                        logger.info(
+                            f"Embedding Provider: Gemini | Successfully generated {len(embeddings)} "
+                            f"embeddings in {elapsed:.2f}s"
+                        )
+                        break
+                    except Exception as api_err:
+                        logger.warning(
+                            f"Gemini API call attempt {attempt}/{max_retries} failed: {str(api_err)}"
+                        )
+                        if attempt == max_retries:
+                            raise api_err
+                        time.sleep(retry_delay * attempt)
+                
+                if embeddings:
+                    return embeddings
+            else:
+                logger.warning("Gemini Client could not be initialized.")
+        except Exception as e:
+            logger.warning(
+                f"Fallback Event: Gemini API failed to generate embeddings. "
+                f"API Error: {str(e)}. Switching to local MiniLM fallback..."
+            )
 
-    payload = {
-        "inputs": documents,
-        "options": {
-            "wait_for_model": True
-        }
-    }
-
+    # Local fallback path
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=60)
-        
-        if response.status_code != 200:
-            err_msg = response.text
-            try:
-                err_json = response.json()
-                if "error" in err_json:
-                    err_msg = err_json["error"]
-            except Exception:
-                pass
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Hugging Face API error: {err_msg}"
-            )
-
-        data = response.json()
-        
-        if not isinstance(data, list) or len(data) == 0:
-            raise HTTPException(
-                status_code=502,
-                detail="Invalid response format from Hugging Face Inference API (expected a list)."
-            )
-            
-        return data
-
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Failed to connect to Hugging Face Inference API: {str(e)}"
+        t0 = time.time()
+        model = get_local_model()
+        logger.info("Embedding Provider: Local MiniLM | Starting embedding generation...")
+        raw_embeddings = model.encode(documents)
+        elapsed = time.time() - t0
+        logger.info(
+            f"Embedding Provider: Local MiniLM | Successfully generated {len(documents)} "
+            f"embeddings in {elapsed:.2f}s"
         )
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
+        return raw_embeddings.tolist()
+    except Exception as fallback_err:
+        logger.error(f"Local MiniLM embedding generation failed: {str(fallback_err)}")
         raise HTTPException(
             status_code=500,
-            detail=f"An unexpected error occurred during Hugging Face embedding generation: {str(e)}"
+            detail=f"Both Gemini and local fallback embedding generation failed: {str(fallback_err)}"
         )
 
 def get_openai_embeddings(

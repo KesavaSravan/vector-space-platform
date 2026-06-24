@@ -8,3 +8,6 @@ umap-learn
 python-multipart
 requests
 faiss-cpu
+google-genai
+sentence-transformers
+torch
