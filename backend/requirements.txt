@@ -11,3 +11,4 @@ faiss-cpu
 google-genai
 sentence-transformers
 torch
+python-dotenv

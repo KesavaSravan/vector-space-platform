@@ -1,4 +1,9 @@
 import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any, Optional

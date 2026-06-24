@@ -8,6 +8,7 @@ services:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
       - ./backend:/app
     dns:
