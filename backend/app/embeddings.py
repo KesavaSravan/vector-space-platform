@@ -33,10 +33,16 @@ if not logger.handlers:
 # Global variables for caching clients and models to optimize production usage
 _gemini_client = None
 _local_model = None
+_env_validated = False
 
 def validate_env() -> None:
+    global _env_validated
+    if _env_validated:
+        return
+    _env_validated = True
     """
-    Validates environment variables at application startup.
+    Validates environment variables.
+
     Logs loading process and selected provider.
     
     Setting GEMINI_API_KEY:
@@ -160,6 +166,7 @@ def get_gemini_embeddings(
     if not documents:
         return []
 
+    validate_env()
     gemini_key = os.getenv("GEMINI_API_KEY")
     if not gemini_key:
         raise HTTPException(

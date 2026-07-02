@@ -336,6 +336,49 @@ export function useAppActions() {
     }
   };
 
+  const generateTextEmbeddingsStructured = async (embedParams) => {
+    dispatch({ type: "START_LOADING", payload: "embed" });
+    try {
+      const summary = await api.generateEmbeddingsText(embedParams);
+      dispatch({ type: "UPLOAD_SUCCESS", payload: summary });
+      await runReduction(state.algo.reductionMethod, state.algo.nComponents);
+    } catch (err) {
+      setError(err);
+    } finally {
+      dispatch({ type: "STOP_LOADING", payload: "embed" });
+    }
+  };
+
+  const generateFileEmbeddings = async (formData) => {
+    dispatch({ type: "START_LOADING", payload: "embed" });
+    try {
+      const summary = await api.generateEmbeddingsFile(formData);
+      dispatch({ type: "UPLOAD_SUCCESS", payload: summary });
+      await runReduction(state.algo.reductionMethod, state.algo.nComponents);
+    } catch (err) {
+      setError(err);
+    } finally {
+      dispatch({ type: "STOP_LOADING", payload: "embed" });
+    }
+  };
+
+  const downloadEmbeddingsCsv = async () => {
+    try {
+      const blob = await api.downloadEmbeddingsCsv();
+      const url = window.URL.createObjectURL(new Blob([blob]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "vector_embeddings.csv");
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      dispatch({ type: "SET_NOTICE", payload: "CSV download started successfully." });
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message || "An unknown error occurred.";
+      dispatch({ type: "SET_ERROR", payload: msg });
+    }
+  };
+
   const clearAll = async () => {
     try {
       await api.clearVectors();
@@ -369,6 +412,9 @@ export function useAppActions() {
     runSimilarity,
     selectVector,
     generateTextEmbeddings,
+    generateTextEmbeddingsStructured,
+    generateFileEmbeddings,
+    downloadEmbeddingsCsv,
     clearAll,
     refreshStatistics,
     updateFilters,

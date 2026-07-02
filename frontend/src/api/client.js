@@ -76,6 +76,26 @@ export const api = {
     // params: { provider, documents, model, api_key, azure_endpoint, azure_deployment }
     const response = await client.post("/generate-embeddings", params);
     return response.data;
+  },
+
+  generateEmbeddingsText: async (params) => {
+    // params: { provider, text_data, model, api_key, azure_endpoint, azure_deployment, batch_size }
+    const response = await client.post("/generate-embeddings-text", params);
+    return response.data;
+  },
+
+  generateEmbeddingsFile: async (formData) => {
+    const response = await client.post("/generate-embeddings-file", formData, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
+    return response.data;
+  },
+
+  downloadEmbeddingsCsv: async () => {
+    const response = await client.get("/download-embeddings-csv", {
+      responseType: "blob"
+    });
+    return response.data;
   }
 };
 

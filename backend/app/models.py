@@ -38,6 +38,15 @@ class GenerateEmbeddingsRequest(BaseModel):
     azure_deployment: Optional[str] = None
     batch_size: Optional[int] = 100
 
+class GenerateEmbeddingsTextRequest(BaseModel):
+    provider: str  # "sentence-transformers", "openai", "azure", "gemini"
+    text_data: str
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    azure_endpoint: Optional[str] = None
+    azure_deployment: Optional[str] = None
+    batch_size: Optional[int] = 100
+
 class PointResponse(BaseModel):
     id: str
     label: str

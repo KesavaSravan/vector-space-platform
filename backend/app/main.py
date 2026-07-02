@@ -4,7 +4,8 @@ try:
     load_dotenv()
 except ImportError:
     pass
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query, status
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, status, Form
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any, Optional
 
@@ -14,6 +15,7 @@ from app.models import (
     ClusteringRequest,
     SimilarityRequest,
     GenerateEmbeddingsRequest,
+    GenerateEmbeddingsTextRequest,
     PointResponse,
     SimilarityResponse,
     SimilarityMatch,
@@ -36,11 +38,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-@app.on_event("startup")
-def startup_event():
-    validate_env()
-    from app.embeddings import run_startup_embedding_check
-    run_startup_embedding_check()
+
+
 
 # Enable CORS for all origins (demo mode)
 app.add_middleware(
@@ -466,3 +465,332 @@ def embedding_diagnostic():
         status_info["local_minilm_status"] = f"unavailable: {str(e)}"
         
     return status_info
+
+@app.post("/generate-embeddings-text")
+def generate_embeddings_text(request: GenerateEmbeddingsTextRequest):
+    """
+    Generates embeddings from a parsed text dataset matching the `Number - Text` format.
+    Adds them to store and returns upload summary metadata along with processing statistics.
+    """
+    import math
+    import time
+    try:
+        raw_text = request.text_data or ""
+        lines = raw_text.splitlines()
+        
+        parsed_records = []
+        for line_idx, line in enumerate(lines, 1):
+            line = line.strip()
+            if not line:
+                continue
+            if "-" not in line:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Parsing error on line {line_idx}: Line must contain a '-' separator between Number and Text."
+                )
+            parts = line.split("-", 1)
+            num_part = parts[0].strip()
+            text_part = parts[1].strip()
+            if not num_part:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Parsing error on line {line_idx}: Missing number before '-' separator."
+                )
+            if not text_part:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Parsing error on line {line_idx}: Missing text after '-' separator."
+                )
+            parsed_records.append({"number": num_part, "text": text_part})
+            
+        if not parsed_records:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid 'Number - Text' records found."
+            )
+            
+        provider = request.provider.lower()
+        warning_msg = None
+        
+        # Enforce Gemini limit
+        if provider == "gemini" and len(parsed_records) > 100:
+            parsed_records = parsed_records[:100]
+            warning_msg = "Warning: Platform limit active. Only the first 100 records were processed to stay within Gemini Free Tier limits."
+            
+        cleaned_documents = [r["text"] for r in parsed_records]
+        batch_size_used = request.batch_size or 100
+        number_of_batches_processed = math.ceil(len(cleaned_documents) / batch_size_used)
+        
+        t0 = time.time()
+        embeddings, model_used = generate_embeddings(
+            provider=request.provider,
+            documents=cleaned_documents,
+            model=request.model,
+            api_key=request.api_key,
+            azure_endpoint=request.azure_endpoint,
+            azure_deployment=request.azure_deployment,
+            batch_size=batch_size_used
+        )
+        duration = time.time() - t0
+        
+        # Ingest as new VectorInputs
+        new_vectors = []
+        for idx, record in enumerate(parsed_records):
+            vid = record["number"]
+            doc = record["text"]
+            label = doc[:30] + "..." if len(doc) > 30 else doc
+            
+            metadata = {
+                "source": "AI Generation Mode (Text Ingest)",
+                "original_number": record["number"],
+                "original_text": doc,
+                "severity": "Medium",
+                "timestamp": "2026-07-02T20:45:00Z"
+            }
+            
+            new_vectors.append(VectorInput(
+                id=vid,
+                label=label,
+                embedding=embeddings[idx],
+                metadata=metadata
+            ))
+            
+        summary = store.add_vectors(new_vectors)
+        
+        # Add additional metadata keys
+        summary.update({
+            "total_records_processed": len(parsed_records),
+            "total_embeddings_generated": len(embeddings),
+            "batch_size_used": batch_size_used,
+            "number_of_batches_processed": number_of_batches_processed,
+            "embedding_model_used": model_used,
+            "processing_duration": round(duration, 3)
+        })
+        if warning_msg:
+            summary["warning"] = warning_msg
+            
+        return summary
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Embeddings generation failed: {str(e)}"
+        )
+
+@app.post("/generate-embeddings-file")
+async def generate_embeddings_file(
+    file: UploadFile = File(...),
+    provider: str = Form(...),
+    model: Optional[str] = Form(None),
+    api_key: Optional[str] = Form(None),
+    azure_endpoint: Optional[str] = Form(None),
+    azure_deployment: Optional[str] = Form(None),
+    batch_size: int = Form(100)
+):
+    """
+    Accepts an Excel (.xlsx/.xls) or CSV (.csv) file, parses the columns 'Number' and 'Text',
+    generates embeddings for each row, and adds them to the store.
+    """
+    import math
+    import time
+    import pandas as pd
+    import io
+    
+    filename = file.filename or ""
+    filename_lower = filename.lower()
+    
+    content = await file.read()
+    
+    try:
+        if filename_lower.endswith(".csv"):
+            text_content = content.decode("utf-8", errors="replace")
+            df = pd.read_csv(io.StringIO(text_content))
+        elif filename_lower.endswith(".xlsx") or filename_lower.endswith(".xls"):
+            df = pd.read_excel(io.BytesIO(content))
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported file format. Please upload an Excel (.xlsx/.xls) or CSV (.csv) file."
+            )
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to parse file: {str(e)}"
+        )
+        
+    # Match columns case-insensitively
+    number_col = None
+    text_col = None
+    
+    for col in df.columns:
+        col_lower = str(col).strip().lower()
+        if col_lower in ["number", "no.", "no", "id", "num"]:
+            number_col = col
+        if col_lower in ["text", "content", "document", "text 1", "text_1"]:
+            text_col = col
+            
+    # Fallbacks if columns are not named exactly
+    if not number_col and len(df.columns) > 0:
+        number_col = df.columns[0]
+    if not text_col and len(df.columns) > 1:
+        text_col = df.columns[1]
+        
+    if not number_col or not text_col:
+        raise HTTPException(
+            status_code=400,
+            detail="File must contain columns matching 'Number' and 'Text' (or at least two columns)."
+        )
+        
+    # Parse rows
+    parsed_records = []
+    for idx, row in df.iterrows():
+        num_val = row[number_col]
+        text_val = row[text_col]
+        
+        # Skip rows with empty text or empty number
+        if pd.isna(num_val) or pd.isna(text_val):
+            continue
+            
+        num_str = str(num_val).strip()
+        text_str = str(text_val).strip()
+        
+        if num_str.endswith(".0"):
+            num_str = num_str[:-2]
+            
+        if not num_str or not text_str:
+            continue
+            
+        parsed_records.append({
+            "number": num_str,
+            "text": text_str
+        })
+        
+    if not parsed_records:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid rows containing both 'Number' and 'Text' values were found."
+        )
+        
+    provider = provider.lower()
+    warning_msg = None
+    
+    # Enforce Gemini limit
+    if provider == "gemini" and len(parsed_records) > 100:
+        parsed_records = parsed_records[:100]
+        warning_msg = "Warning: Platform limit active. Only the first 100 records were processed to stay within Gemini Free Tier limits."
+        
+    cleaned_documents = [r["text"] for r in parsed_records]
+    batch_size_used = batch_size or 100
+    number_of_batches_processed = math.ceil(len(cleaned_documents) / batch_size_used)
+    
+    t0 = time.time()
+    try:
+        embeddings, model_used = generate_embeddings(
+            provider=provider,
+            documents=cleaned_documents,
+            model=model,
+            api_key=api_key,
+            azure_endpoint=azure_endpoint,
+            azure_deployment=azure_deployment,
+            batch_size=batch_size_used
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Embeddings generation failed: {str(e)}"
+        )
+        
+    duration = time.time() - t0
+    
+    # Ingest as new VectorInputs
+    new_vectors = []
+    for idx, record in enumerate(parsed_records):
+        vid = record["number"]
+        doc = record["text"]
+        label = doc[:30] + "..." if len(doc) > 30 else doc
+        
+        metadata = {
+            "source": f"AI Generation Mode ({filename})",
+            "original_number": record["number"],
+            "original_text": doc,
+            "severity": "Medium",
+            "timestamp": "2026-07-02T20:58:00Z"
+        }
+        
+        new_vectors.append(VectorInput(
+            id=vid,
+            label=label,
+            embedding=embeddings[idx],
+            metadata=metadata
+        ))
+        
+    summary = store.add_vectors(new_vectors)
+    
+    # Add additional metadata keys
+    summary.update({
+        "total_records_processed": len(parsed_records),
+        "total_embeddings_generated": len(embeddings),
+        "batch_size_used": batch_size_used,
+        "number_of_batches_processed": number_of_batches_processed,
+        "embedding_model_used": model_used,
+        "processing_duration": round(duration, 3)
+    })
+    if warning_msg:
+        summary["warning"] = warning_msg
+        
+    return summary
+
+@app.get("/download-embeddings-csv")
+def download_embeddings_csv():
+    """
+    Downloads all currently stored vectors as a CSV file with the structure:
+    Number | Text | Dimension_1 | Dimension_2 | ... | Dimension_N
+    """
+    import io
+    import pandas as pd
+    
+    if not store.has_vectors():
+        raise HTTPException(
+            status_code=400,
+            detail="No vectors are loaded in the system. Please ingest or generate vectors first."
+        )
+        
+    all_vectors = store.get_all_vectors()
+    rows = []
+    
+    for v in all_vectors:
+        row = {
+            "Number": v["metadata"].get("original_number", v["id"]),
+            "Text": v["metadata"].get("original_text", v["label"])
+        }
+        embedding = v["embedding"]
+        for i, val in enumerate(embedding, 1):
+            row[f"Dimension_{i}"] = val
+        rows.append(row)
+        
+    df = pd.DataFrame(rows)
+    
+    # Write to memory buffer
+    output = io.StringIO()
+    try:
+        df.to_csv(output, index=False)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate CSV file: {str(e)}"
+        )
+        
+    csv_bytes = output.getvalue().encode("utf-8")
+    
+    return StreamingResponse(
+        io.BytesIO(csv_bytes),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=vector_embeddings.csv"
+        }
+    )
+
+

@@ -12,7 +12,9 @@ import {
   MenuItem,
   TextField,
   InputAdornment,
-  IconButton
+  IconButton,
+  Tabs,
+  Tab
 } from "@mui/material";
 import {
   CloudUpload as UploadIcon,
@@ -20,7 +22,8 @@ import {
   PlayArrow as GoIcon,
   Visibility as EyeIcon,
   VisibilityOff as EyeOffIcon,
-  ExpandMore as ExpandMoreIcon
+  ExpandMore as ExpandMoreIcon,
+  FileDownload as DownloadIcon
 } from "@mui/icons-material";
 import { useAppState, useAppActions } from "../../context/AppContext";
 import { tokens } from "../../theme";
@@ -31,7 +34,10 @@ export default function UploadPanel() {
     uploadFile,
     uploadSampleDataset,
     clearAll,
-    generateTextEmbeddings
+    generateTextEmbeddings,
+    generateTextEmbeddingsStructured,
+    generateFileEmbeddings,
+    downloadEmbeddingsCsv
   } = useAppActions();
 
   const [aiOpen, setAiOpen] = useState(false);
@@ -41,7 +47,12 @@ export default function UploadPanel() {
   const [showKey, setShowKey] = useState(false);
   const [azureEndpoint, setAzureEndpoint] = useState("");
   const [azureDeployment, setAzureDeployment] = useState("");
+  
+  // Ingest state
+  const [activeTab, setActiveTab] = useState(0); // 0 = Simple List, 1 = Paste Number - Text, 2 = Excel or CSV file
   const [documentsText, setDocumentsText] = useState("");
+  const [structuredText, setStructuredText] = useState("");
+  const [excelFile, setExcelFile] = useState(null);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -51,22 +62,63 @@ export default function UploadPanel() {
   };
 
   const handleAiSubmit = () => {
-    if (!documentsText.trim()) return;
-    const documents = documentsText
-      .split("\n")
-      .map((d) => d.trim())
-      .filter(Boolean);
-
-    if (documents.length === 0) return;
-
-    generateTextEmbeddings({
+    const params = {
       provider,
-      documents,
       model: model || undefined,
       api_key: apiKey || undefined,
       azure_endpoint: azureEndpoint || undefined,
       azure_deployment: azureDeployment || undefined
-    });
+    };
+
+    if (activeTab === 0) {
+      if (!documentsText.trim()) return;
+      const documents = documentsText
+        .split("\n")
+        .map((d) => d.trim())
+        .filter(Boolean);
+
+      if (documents.length === 0) return;
+
+      generateTextEmbeddings({
+        ...params,
+        documents
+      });
+    } else if (activeTab === 1) {
+      if (!structuredText.trim()) return;
+      
+      // Basic format validation
+      const lines = structuredText.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        if (!line.includes("-")) {
+          alert(`Formatting error on line ${i + 1}: Line must contain a '-' separator between Number and Text.`);
+          return;
+        }
+        const parts = line.split("-");
+        if (!parts[0].trim() || !parts[1].trim()) {
+          alert(`Formatting error on line ${i + 1}: Both Number and Text must be provided.`);
+          return;
+        }
+      }
+
+      generateTextEmbeddingsStructured({
+        ...params,
+        text_data: structuredText
+      });
+    } else if (activeTab === 2) {
+      if (!excelFile) return;
+
+      const formData = new FormData();
+      formData.append("file", excelFile);
+      formData.append("provider", provider);
+      if (model) formData.append("model", model);
+      if (apiKey) formData.append("api_key", apiKey);
+      if (azureEndpoint) formData.append("azure_endpoint", azureEndpoint);
+      if (azureDeployment) formData.append("azure_deployment", azureDeployment);
+
+      generateFileEmbeddings(formData);
+    }
   };
 
   return (
@@ -121,26 +173,49 @@ export default function UploadPanel() {
       )}
 
       {/* Utility Actions */}
-      <Box sx={{ display: "flex", gap: 1 }}>
-        <Button
-          variant="contained"
-          onClick={uploadSampleDataset}
-          fullWidth
-          disabled={state.loading.upload}
-          size="small"
-        >
-          Load Sample
-        </Button>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Button
+            variant="contained"
+            onClick={uploadSampleDataset}
+            fullWidth
+            disabled={state.loading.upload}
+            size="small"
+          >
+            Load Sample
+          </Button>
+          {state.points.length > 0 && (
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={clearAll}
+              size="small"
+              sx={{ minWidth: 90 }}
+            >
+              Clear
+            </Button>
+          )}
+        </Box>
         {state.points.length > 0 && (
           <Button
             variant="outlined"
-            color="error"
-            startIcon={<DeleteIcon />}
-            onClick={clearAll}
+            color="secondary"
+            startIcon={<DownloadIcon />}
+            onClick={downloadEmbeddingsCsv}
             size="small"
-            sx={{ minWidth: 100 }}
+            fullWidth
+            className="fade-in"
+            sx={{
+              borderColor: tokens.signal,
+              color: tokens.signal,
+              "&:hover": {
+                borderColor: tokens.signal,
+                backgroundColor: `${tokens.signal}10`
+              }
+            }}
           >
-            Clear
+            Download CSV
           </Button>
         )}
       </Box>
@@ -262,17 +337,82 @@ export default function UploadPanel() {
               </>
             )}
 
-            {/* Document Texts Input */}
-            <TextField
-              label="Documents (one per line)"
-              value={documentsText}
-              onChange={(e) => setDocumentsText(e.target.value)}
-              multiline
-              rows={4}
-              size="small"
-              fullWidth
-              placeholder="Database migration completed&#10;Memory leak detected in microservice&#10;Frontend bundle size optimization"
-            />
+            {/* Ingestion Tabs */}
+            <Tabs
+              value={activeTab}
+              onChange={(e, val) => setActiveTab(val)}
+              variant="fullWidth"
+              sx={{
+                borderBottom: `1px solid ${tokens.border}`,
+                mb: 0.5,
+                minHeight: 36,
+                "& .MuiTab-root": { py: 0.5, minHeight: 36, fontSize: "0.8rem" }
+              }}
+            >
+              <Tab label="List" />
+              <Tab label="Pasted Text" />
+              <Tab label="Excel/CSV File" />
+            </Tabs>
+
+            {/* Tab Panels */}
+            {activeTab === 0 && (
+              <TextField
+                label="Documents (one per line)"
+                value={documentsText}
+                onChange={(e) => setDocumentsText(e.target.value)}
+                multiline
+                rows={4}
+                size="small"
+                fullWidth
+                placeholder="Database migration completed&#10;Memory leak detected in microservice&#10;Frontend bundle size optimization"
+              />
+            )}
+
+            {activeTab === 1 && (
+              <TextField
+                label="Structured entries (Number - Text)"
+                value={structuredText}
+                onChange={(e) => setStructuredText(e.target.value)}
+                multiline
+                rows={4}
+                size="small"
+                fullWidth
+                placeholder={"1 - Database migration completed\n2 - Memory leak detected\n3 - Frontend bundle size optimization"}
+              />
+            )}
+
+            {activeTab === 2 && (
+              <Box
+                sx={{
+                  border: `1px dashed ${tokens.border}`,
+                  borderRadius: 2,
+                  p: 2,
+                  textAlign: "center",
+                  backgroundColor: tokens.bg,
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                  "&:hover": {
+                    borderColor: tokens.accent,
+                    backgroundColor: `${tokens.accent}08`
+                  }
+                }}
+                component="label"
+              >
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  style={{ display: "none" }}
+                  onChange={(e) => setExcelFile(e.target.files[0])}
+                />
+                <UploadIcon sx={{ fontSize: 24, color: tokens.textSecondary, mb: 0.5 }} />
+                <Typography variant="body2" sx={{ color: tokens.textPrimary, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {excelFile ? excelFile.name : "Select File (.xlsx, .csv)"}
+                </Typography>
+                <Typography variant="caption" sx={{ color: tokens.textMuted, display: "block" }}>
+                  Must contain columns 'Number' & 'Text'
+                </Typography>
+              </Box>
+            )}
 
             {state.loading.embed && (
               <Box sx={{ width: "100%" }}>
@@ -289,7 +429,12 @@ export default function UploadPanel() {
               startIcon={<GoIcon />}
               fullWidth
               onClick={handleAiSubmit}
-              disabled={state.loading.embed || !documentsText.trim()}
+              disabled={
+                state.loading.embed ||
+                (activeTab === 0 && !documentsText.trim()) ||
+                (activeTab === 1 && !structuredText.trim()) ||
+                (activeTab === 2 && !excelFile)
+              }
               size="small"
             >
               Generate & Project
