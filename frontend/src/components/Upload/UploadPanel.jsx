@@ -264,6 +264,8 @@ export default function UploadPanel() {
                     setModel("all-MiniLM-L6-v2");
                   } else if (val === "openai") {
                     setModel("text-embedding-3-small");
+                  } else if (val === "huggingface") {
+                    setModel("sentence-transformers/all-MiniLM-L6-v2");
                   } else {
                     setModel("");
                   }
@@ -273,6 +275,7 @@ export default function UploadPanel() {
                 <MenuItem value="sentence-transformers">Sentence Transformers (Local)</MenuItem>
                 <MenuItem value="openai">OpenAI (Cloud API)</MenuItem>
                 <MenuItem value="azure">Azure OpenAI</MenuItem>
+                <MenuItem value="huggingface">Hugging Face (Cloud API via LangChain)</MenuItem>
               </Select>
             </FormControl>
 
@@ -288,7 +291,11 @@ export default function UploadPanel() {
                   ? "gemini-embedding-001"
                   : provider === "sentence-transformers"
                   ? "all-MiniLM-L6-v2"
-                  : "text-embedding-3-small"
+                  : provider === "openai"
+                  ? "text-embedding-3-small"
+                  : provider === "huggingface"
+                  ? "sentence-transformers/all-MiniLM-L6-v2"
+                  : "Model Name"
               }
             />
 

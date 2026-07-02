@@ -378,6 +378,60 @@ def get_azure_openai_embeddings(
             detail=f"An unexpected error occurred during Azure embedding generation: {str(e)}"
         )
 
+def get_huggingface_embeddings(
+    documents: List[str],
+    model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+    api_key: Optional[str] = None,
+    batch_size: int = 100
+) -> List[List[float]]:
+    """
+    Generates embeddings using Hugging Face cloud Inference API via LangChain.
+    """
+    if not documents:
+        return []
+
+    hf_token = api_key or os.getenv("HUGGINGFACEHUB_API_TOKEN") or os.getenv("HF_TOKEN")
+    if not hf_token:
+        raise HTTPException(
+            status_code=400,
+            detail="Hugging Face API token is required. Please set HF_TOKEN env variable or provide it in the API Key field."
+        )
+
+    try:
+        from langchain_huggingface.embeddings import HuggingFaceEndpointEmbeddings
+    except ImportError as e:
+        logger.error(f"Failed to import langchain_huggingface: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"LangChain HuggingFace integration is not installed: {str(e)}"
+        )
+
+    try:
+        # Initialize LangChain Hugging Face Endpoint embeddings
+        embeddings_model = HuggingFaceEndpointEmbeddings(
+            model=model_name,
+            task="feature-extraction",
+            huggingfacehub_api_token=hf_token
+        )
+        
+        # Batch processing
+        batches = [documents[i:i + batch_size] for i in range(0, len(documents), batch_size)]
+        logger.info(f"Hugging Face LangChain API: Processing {len(documents)} records in {len(batches)} batches (size: {batch_size})")
+        
+        all_embeddings = []
+        for batch_idx, batch in enumerate(batches, 1):
+            logger.info(f"Hugging Face LangChain API: Processing batch {batch_idx}/{len(batches)} (size: {len(batch)})")
+            embs = embeddings_model.embed_documents(batch)
+            all_embeddings.extend(embs)
+            
+        return all_embeddings
+    except Exception as err:
+        logger.error(f"Hugging Face LangChain embedding generation failed: {str(err)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Hugging Face LangChain embedding generation failed: {str(err)}"
+        )
+
 def generate_embeddings(
     provider: str,
     documents: List[str],
@@ -432,5 +486,11 @@ def generate_embeddings(
             all_embeddings.extend(embs)
         return all_embeddings, azure_deployment or "azure-deployment"
         
+    elif provider == "huggingface":
+        model_name = model or "sentence-transformers/all-MiniLM-L6-v2"
+        embeddings = get_huggingface_embeddings(documents, model_name, api_key, batch_size)
+        return embeddings, model_name
+        
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported embedding provider '{provider}'.")
+

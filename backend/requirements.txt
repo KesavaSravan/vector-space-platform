@@ -13,3 +13,5 @@ sentence-transformers
 torch
 python-dotenv
 openpyxl
+langchain
+langchain-huggingface
