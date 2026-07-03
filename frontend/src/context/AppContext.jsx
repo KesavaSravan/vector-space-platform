@@ -6,6 +6,7 @@ const AppStateContext = createContext(null);
 const AppDispatchContext = createContext(null);
 
 const initialState = {
+  view: "landing", // "landing" | "app"
   mode: "general", // "general" | "alert"
   points: [], // Array of { id, label, coords: [x,y,z], cluster, severity, metadata }
   dimension: null,
@@ -47,6 +48,11 @@ const initialState = {
 // Reducer Actions
 function appReducer(state, action) {
   switch (action.type) {
+    case "SET_VIEW":
+      return {
+        ...state,
+        view: action.payload
+      };
     case "SET_MODE":
       return {
         ...state,
@@ -404,6 +410,10 @@ export function useAppActions() {
     dispatch({ type: "SET_MODE", payload: mode });
   };
 
+  const setView = (view) => {
+    dispatch({ type: "SET_VIEW", payload: view });
+  };
+
   return {
     uploadFile,
     uploadSampleDataset,
@@ -421,6 +431,7 @@ export function useAppActions() {
     updateAlgo,
     setHovered,
     setMode,
+    setView,
     setError,
     clearError,
     clearNotice,

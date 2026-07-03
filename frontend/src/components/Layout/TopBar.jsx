@@ -8,19 +8,22 @@ import {
   Box,
   Chip,
   LinearProgress,
-  CircularProgress
+  CircularProgress,
+  Button
 } from "@mui/material";
 import {
   Troubleshoot as DiagnosticIcon,
   Timeline as TimelineIcon,
-  HelpOutline as InfoIcon
+  HelpOutline as InfoIcon,
+  Home as HomeIcon,
+  Troubleshoot as PlatformIcon
 } from "@mui/icons-material";
 import { useAppState, useAppActions } from "../../context/AppContext";
 import { tokens } from "../../theme";
 
 export default function TopBar() {
   const state = useAppState();
-  const { setMode } = useAppActions();
+  const { setMode, setView } = useAppActions();
 
   const handleModeChange = (event, newMode) => {
     if (newMode !== null) {
@@ -53,7 +56,10 @@ export default function TopBar() {
         }}
       >
         {/* Brand/Logo Section */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        <Box 
+          sx={{ display: "flex", alignItems: "center", gap: 1.5, cursor: "pointer" }}
+          onClick={() => setView("landing")}
+        >
           <Box
             sx={{
               width: 32,
@@ -66,7 +72,7 @@ export default function TopBar() {
               boxShadow: `0 0 12px ${tokens.accent}40`
             }}
           >
-            <DiagnosticIcon sx={{ fontSize: 18, color: tokens.bg }} />
+            <PlatformIcon sx={{ fontSize: 18, color: tokens.bg }} />
           </Box>
           <Box>
             <Typography
@@ -177,6 +183,33 @@ export default function TopBar() {
               />
             </>
           )}
+
+          {/* Home Button aligned to far right */}
+          <Button
+            size="small"
+            variant="text"
+            startIcon={<HomeIcon sx={{ fontSize: 14 }} />}
+            onClick={() => setView("landing")}
+            sx={{
+              color: tokens.textSecondary,
+              fontFamily: '"Space Grotesk", sans-serif',
+              fontWeight: 600,
+              fontSize: "0.72rem",
+              textTransform: "none",
+              borderRadius: "6px",
+              py: 0.4,
+              px: 1.2,
+              border: `1px solid ${tokens.border}`,
+              backgroundColor: tokens.bg,
+              "&:hover": {
+                color: tokens.textPrimary,
+                borderColor: tokens.accent,
+                backgroundColor: tokens.surface3
+              }
+            }}
+          >
+            Home
+          </Button>
         </Box>
       </Toolbar>
 
