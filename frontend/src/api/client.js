@@ -3,8 +3,8 @@ import axios from "axios";
 // If the environment variable VITE_API_URL points to the docker-internal service (e.g. http://backend:8000)
 // or local host (http://localhost:8000), we fallback to "/api" so Nginx/Vite proxies can strip the prefix
 // and route requests correctly from the user's browser.
-const envUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const baseURL = (envUrl.includes("backend") || envUrl === "http://localhost:8000") ? "/api" : envUrl;
+const envUrl = import.meta.env.VITE_API_URL || "https://backend-570296158927.asia-south1.run.app";
+const baseURL = (envUrl.includes("//backend:") || envUrl === "http://localhost:8000") ? "/api" : envUrl;
 
 const client = axios.create({
   baseURL
