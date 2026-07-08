@@ -57,8 +57,28 @@ export default function RightPanel() {
         variant="fullWidth"
         sx={{
           backgroundColor: tokens.surface2,
+          minHeight: 40,
           "& .MuiTabs-flexContainer": {
-            flexWrap: "wrap"
+            flexWrap: "nowrap"
+          },
+          "& .MuiTab-root": {
+            minWidth: 0,
+            px: 0.5,
+            py: 0.75,
+            fontSize: "0.72rem",
+            textTransform: "none",
+            fontWeight: 600,
+            minHeight: 40,
+            flexDirection: "row",
+            gap: 0.5,
+            "& .MuiTab-iconWrapper": {
+              margin: "0 !important",
+              fontSize: 14
+            },
+            "& .MuiSvgIcon-root": {
+              fontSize: 14,
+              margin: "0 !important"
+            }
           }
         }}
       >

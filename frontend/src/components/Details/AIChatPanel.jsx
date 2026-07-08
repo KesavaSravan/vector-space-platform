@@ -152,7 +152,7 @@ export default function AIChatPanel() {
             AI Assistant Chatbot
           </Typography>
           <Typography variant="caption" sx={{ color: tokens.textMuted }}>
-            {chatSettings.provider === "gemini" ? "Gemini" : "Groq Llama 3.3"} RAG Chat
+            RAG Chat
           </Typography>
         </Box>
         {chatMessages.length > 0 && (
@@ -162,148 +162,150 @@ export default function AIChatPanel() {
         )}
       </Box>
 
-      {/* Configuration Controls (Always Visible) */}
-      <Paper 
-        sx={{ 
-          p: 1.5, 
-          mb: 1.5, 
-          backgroundColor: tokens.surface2, 
-          borderColor: tokens.border,
-          display: "flex",
-          flexDirection: "column",
-          gap: 1.5
-        }}
-      >
-        {/* Provider & Model dropdowns side-by-side */}
-        <Box sx={{ display: "flex", gap: 1 }}>
-          <FormControl size="small" sx={{ flex: 1 }}>
-            <InputLabel>Provider</InputLabel>
-            <Select
-              value={chatSettings.provider}
-              label="Provider"
-              onChange={handleProviderChange}
-            >
-              <MenuItem value="gemini">Gemini</MenuItem>
-              <MenuItem value="groq">Groq</MenuItem>
-            </Select>
-          </FormControl>
-
-          <FormControl size="small" sx={{ flex: 1 }}>
-            <InputLabel>Model</InputLabel>
-            <Select
-              value={selectValue}
-              label="Model"
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === "custom") {
-                  const defaultCustom = chatSettings.provider === "gemini" ? "gemini-2.0-flash" : "llama-3.1-8b-instant";
-                  updateChatSettings({ model: defaultCustom });
-                } else {
-                  updateChatSettings({ model: val });
-                }
-              }}
-            >
-              {chatSettings.provider === "gemini" ? [
-                <MenuItem key="gemini-2.5-flash" value="gemini-2.5-flash">gemini-2.5-flash</MenuItem>,
-                <MenuItem key="gemini-1.5-flash" value="gemini-1.5-flash">gemini-1.5-flash</MenuItem>,
-                <MenuItem key="gemini-1.5-pro" value="gemini-1.5-pro">gemini-1.5-pro</MenuItem>,
-                <MenuItem key="custom-gemini" value="custom">Custom...</MenuItem>
-              ] : [
-                <MenuItem key="llama-3.3-70b-versatile" value="llama-3.3-70b-versatile">Llama 3.3</MenuItem>,
-                <MenuItem key="mixtral-8x7b-32768" value="mixtral-8x7b-32768">Mixtral</MenuItem>,
-                <MenuItem key="gemma2-9b-it" value="gemma2-9b-it">Gemma 2</MenuItem>,
-                <MenuItem key="custom-groq" value="custom">Custom...</MenuItem>
-              ]}
-            </Select>
-          </FormControl>
-        </Box>
-
-        {/* Custom model name text field - shown if not predefined */}
-        {!isPredefined && (
-          <TextField
-            label="Custom Model Name"
-            value={chatSettings.model}
-            onChange={(e) => updateChatSettings({ model: e.target.value })}
-            size="small"
-            fullWidth
-            placeholder={chatSettings.provider === "gemini" ? "e.g. gemini-2.0-flash" : "e.g. llama-3.1-8b-instant"}
-          />
-        )}
-
-        {/* API Key */}
-        <TextField
-          label={chatSettings.provider === "gemini" ? "Gemini API Key" : "Groq API Key"}
-          placeholder="Override server key (optional)"
-          value={currentKeyVal}
-          onChange={handleApiKeyChange}
-          type={showApiKey ? "text" : "password"}
-          size="small"
-          fullWidth
-          slotProps={{
-            input: {
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton onClick={() => setShowApiKey(!showApiKey)} edge="end" size="small">
-                    {showApiKey ? <EyeOffIcon sx={{ fontSize: 16 }} /> : <EyeIcon sx={{ fontSize: 16 }} />}
-                  </IconButton>
-                </InputAdornment>
-              )
-            }
+      {/* Configuration Controls (Collapsible) */}
+      <Collapse in={showSettings}>
+        <Paper 
+          sx={{ 
+            p: 1.5, 
+            mb: 1.5, 
+            backgroundColor: tokens.surface2, 
+            borderColor: tokens.border,
+            display: "flex",
+            flexDirection: "column",
+            gap: 1.5
           }}
-        />
-        {/* Embedding API Key (RAG specific) */}
-        {chatSettings.useRag && providerRequiresKey && (
+        >
+          {/* Provider & Model dropdowns side-by-side */}
+          <Box sx={{ display: "flex", gap: 1 }}>
+            <FormControl size="small" sx={{ flex: 1 }}>
+              <InputLabel>Provider</InputLabel>
+              <Select
+                value={chatSettings.provider}
+                label="Provider"
+                onChange={handleProviderChange}
+              >
+                <MenuItem value="gemini">Gemini</MenuItem>
+                <MenuItem value="groq">Groq</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ flex: 1 }}>
+              <InputLabel>Model</InputLabel>
+              <Select
+                value={selectValue}
+                label="Model"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "custom") {
+                    const defaultCustom = chatSettings.provider === "gemini" ? "gemini-2.0-flash" : "llama-3.1-8b-instant";
+                    updateChatSettings({ model: defaultCustom });
+                  } else {
+                    updateChatSettings({ model: val });
+                  }
+                }}
+              >
+                {chatSettings.provider === "gemini" ? [
+                  <MenuItem key="gemini-2.5-flash" value="gemini-2.5-flash">gemini-2.5-flash</MenuItem>,
+                  <MenuItem key="gemini-1.5-flash" value="gemini-1.5-flash">gemini-1.5-flash</MenuItem>,
+                  <MenuItem key="gemini-1.5-pro" value="gemini-1.5-pro">gemini-1.5-pro</MenuItem>,
+                  <MenuItem key="custom-gemini" value="custom">Custom...</MenuItem>
+                ] : [
+                  <MenuItem key="llama-3.3-70b-versatile" value="llama-3.3-70b-versatile">Llama 3.3</MenuItem>,
+                  <MenuItem key="mixtral-8x7b-32768" value="mixtral-8x7b-32768">Mixtral</MenuItem>,
+                  <MenuItem key="gemma2-9b-it" value="gemma2-9b-it">Gemma 2</MenuItem>,
+                  <MenuItem key="custom-groq" value="custom">Custom...</MenuItem>
+                ]}
+              </Select>
+            </FormControl>
+          </Box>
+
+          {/* Custom model name text field - shown if not predefined */}
+          {!isPredefined && (
+            <TextField
+              label="Custom Model Name"
+              value={chatSettings.model}
+              onChange={(e) => updateChatSettings({ model: e.target.value })}
+              size="small"
+              fullWidth
+              placeholder={chatSettings.provider === "gemini" ? "e.g. gemini-2.0-flash" : "e.g. llama-3.1-8b-instant"}
+            />
+          )}
+
+          {/* API Key */}
           <TextField
-            label={`Embedding API Key (${datasetProvider?.toUpperCase()})`}
-            placeholder="Required for query embedding"
-            value={chatSettings.embeddingApiKey || ""}
-            onChange={(e) => updateChatSettings({ embeddingApiKey: e.target.value })}
-            type="password"
+            label={chatSettings.provider === "gemini" ? "Gemini API Key" : "Groq API Key"}
+            placeholder="Override server key (optional)"
+            value={currentKeyVal}
+            onChange={handleApiKeyChange}
+            type={showApiKey ? "text" : "password"}
             size="small"
             fullWidth
-            required
-            error={!chatSettings.embeddingApiKey?.trim()}
-            helperText={!chatSettings.embeddingApiKey?.trim() ? `Required to embed query using ${datasetModel}` : ""}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton onClick={() => setShowApiKey(!showApiKey)} edge="end" size="small">
+                      {showApiKey ? <EyeOffIcon sx={{ fontSize: 16 }} /> : <EyeIcon sx={{ fontSize: 16 }} />}
+                    </IconButton>
+                  </InputAdornment>
+                )
+              }
+            }}
           />
-        )}
-        {/* RAG Toggle */}
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={chatSettings.useRag}
-              onChange={handleRagToggle}
+          {/* Embedding API Key (RAG specific) */}
+          {chatSettings.useRag && providerRequiresKey && (
+            <TextField
+              label={`Embedding API Key (${datasetProvider?.toUpperCase()})`}
+              placeholder="Required for query embedding"
+              value={chatSettings.embeddingApiKey || ""}
+              onChange={(e) => updateChatSettings({ embeddingApiKey: e.target.value })}
+              type="password"
               size="small"
-              color="secondary"
+              fullWidth
+              required
+              error={!chatSettings.embeddingApiKey?.trim()}
+              helperText={!chatSettings.embeddingApiKey?.trim() ? `Required to embed query using ${datasetModel}` : ""}
             />
-          }
-          label={
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              Enable RAG (Search Vector Space)
-            </Typography>
-          }
-          sx={{ m: 0 }}
-        />
+          )}
+          {/* RAG Toggle */}
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={chatSettings.useRag}
+                onChange={handleRagToggle}
+                size="small"
+                color="secondary"
+              />
+            }
+            label={
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Enable RAG (Search Vector Space)
+              </Typography>
+            }
+            sx={{ m: 0 }}
+          />
 
-        {/* RAG Top K Slider */}
-        {chatSettings.useRag && (
-          <Box sx={{ px: 1, mt: -0.5 }}>
-            <Typography variant="caption" sx={{ color: tokens.textSecondary, display: "block", mb: 0.5 }}>
-              Context Limit: top {chatSettings.topK} similar nodes
-            </Typography>
-            <Slider
-              value={chatSettings.topK}
-              onChange={handleTopKChange}
-              min={1}
-              max={20}
-              step={1}
-              marks
-              valueLabelDisplay="auto"
-              color="secondary"
-              size="small"
-            />
-          </Box>
-        )}
-      </Paper>
+          {/* RAG Top K Slider */}
+          {chatSettings.useRag && (
+            <Box sx={{ px: 1, mt: -0.5 }}>
+              <Typography variant="caption" sx={{ color: tokens.textSecondary, display: "block", mb: 0.5 }}>
+                Context Limit: top {chatSettings.topK} similar nodes
+              </Typography>
+              <Slider
+                value={chatSettings.topK}
+                onChange={handleTopKChange}
+                min={1}
+                max={20}
+                step={1}
+                marks
+                valueLabelDisplay="auto"
+                color="secondary"
+                size="small"
+              />
+            </Box>
+          )}
+        </Paper>
+      </Collapse>
 
       <Divider sx={{ mb: 1 }} />
 
@@ -441,10 +443,32 @@ export default function AIChatPanel() {
           maxRows={2}
           onKeyDown={handleKeyPress}
           disabled={chatLoading}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <IconButton 
+                    size="small" 
+                    onClick={() => setShowSettings(!showSettings)} 
+                    sx={{ 
+                      color: showSettings ? tokens.signal : tokens.textSecondary,
+                      "&:hover": { color: tokens.signal },
+                      mr: 0.5,
+                      p: 0.25
+                    }}
+                    title="Configure Chat & RAG Settings"
+                  >
+                    <SettingsIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </InputAdornment>
+              )
+            }
+          }}
           sx={{
             "& .MuiOutlinedInput-root": {
               backgroundColor: tokens.bg,
-              fontSize: "0.85rem"
+              fontSize: "0.85rem",
+              pl: 1
             }
           }}
         />
