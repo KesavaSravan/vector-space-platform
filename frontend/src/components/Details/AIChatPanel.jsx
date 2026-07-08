@@ -152,7 +152,7 @@ export default function AIChatPanel() {
             AI Assistant Chatbot
           </Typography>
           <Typography variant="caption" sx={{ color: tokens.textMuted }}>
-            {chatSettings.provider === "gemini" ? "Gemini" : "Groq Llama 3.3"} RAG Chat
+            RAG Chat
           </Typography>
         </Box>
         {chatMessages.length > 0 && (
