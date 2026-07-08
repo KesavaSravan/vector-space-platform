@@ -22,8 +22,8 @@ import {
 import { useAppActions } from "../../context/AppContext";
 import { tokens } from "../../theme";
 
-export default function LandingPage() {
-  const { setView } = useAppActions();
+export default function LandingPage({ isDocked = false }) {
+  const { setView, toggleDockLanding } = useAppActions();
 
   const handleLaunch = () => {
     setView("app");
@@ -31,36 +31,151 @@ export default function LandingPage() {
 
   const features = [
     {
-      icon: <IngestIcon sx={{ fontSize: 32, color: tokens.signal }} />,
+      icon: <IngestIcon sx={{ fontSize: isDocked ? 20 : 32, color: tokens.signal }} />,
       title: "Structured Data Ingestion",
-      description: "Supports simple document lists, pasted 'Number - Text' rows, and standard Excel or CSV file uploads. All generated coordinates are downloadable as ordered CSVs."
+      description: "Supports raw text lists, pasted 'Number - Text' rows, and standard Excel or CSV file uploads. All generated coordinates are downloadable as ordered CSVs."
     },
     {
-      icon: <ConnectionIcon sx={{ fontSize: 32, color: tokens.accent }} />,
+      icon: <ConnectionIcon sx={{ fontSize: isDocked ? 20 : 32, color: tokens.accent }} />,
       title: "Multi-Provider AI Embeddings",
       description: "Integrates with Google Gemini, Hugging Face Hub (via LangChain), OpenAI, Azure, and local Sentence-Transformers. Fully lazy-loaded to optimize memory."
     },
     {
-      icon: <ProjectionIcon sx={{ fontSize: 32, color: tokens.signal }} />,
+      icon: <SearchIcon sx={{ fontSize: isDocked ? 20 : 32, color: tokens.signal }} />,
+      title: "Persistent FAISS Retrieval",
+      description: "Uses backend Cosine similarity FAISS indices to perform microsecond-level query vectorization and retrieval for search and RAG contexts."
+    },
+    {
+      icon: <ClusterIcon sx={{ fontSize: isDocked ? 20 : 32, color: tokens.accent }} />,
+      title: "Automatic KMeans Clustering",
+      description: "Ingested vectors are automatically partitioned into clusters upon loading, instantly color-mapping the 3D space and dashboard metrics."
+    },
+    {
+      icon: <PlatformIcon sx={{ fontSize: isDocked ? 20 : 32, color: tokens.signal }} />,
+      title: "AI RAG Chatbot Integration",
+      description: "Chat directly with your uploaded documents using Gemini or Groq Llama 3.3. Prompts for embedding API keys automatically."
+    },
+    {
+      icon: <ProjectionIcon sx={{ fontSize: isDocked ? 20 : 32, color: tokens.accent }} />,
       title: "Dimensionality Projection",
       description: "Applies mathematical scaling and projects high-dimensional embeddings into a visual 3D space using PCA, t-SNE, or UMAP algorithms."
     },
     {
-      icon: <ClusterIcon sx={{ fontSize: 32, color: tokens.accent }} />,
-      title: "Unsupervised Clustering",
-      description: "Partitions vectors using K-Means or identifies dense patterns using DBSCAN, auto-marking outliers and coloring point clusters dynamically."
+      icon: <ConnectionIcon sx={{ fontSize: isDocked ? 20 : 32, color: tokens.signal }} />,
+      title: "Self-Contained Data Exchange",
+      description: "Exported CSV/JSON files embed the provider, model, and dimension metadata, recreating the search index instantly on upload."
     },
     {
-      icon: <SearchIcon sx={{ fontSize: 32, color: tokens.signal }} />,
-      title: "Spatial Similarity Search",
-      description: "Pinpoint nearest neighbors inside the 3D void using Cosine Similarity or Euclidean Distance. Filter results by similarity thresholds."
-    },
-    {
-      icon: <AnalyticsIcon sx={{ fontSize: 32, color: tokens.accent }} />,
+      icon: <AnalyticsIcon sx={{ fontSize: isDocked ? 20 : 32, color: tokens.accent }} />,
       title: "Deep Workspace Analytics",
       description: "Calculates statistics for outliers, cluster distribution spreads, and severity weights. Explored details are shown in an interactive side drawer."
     }
   ];
+
+  if (isDocked) {
+    return (
+      <Box
+        sx={{
+          width: "100%",
+          height: "100%",
+          backgroundColor: tokens.surface,
+          borderRight: `1px solid ${tokens.border}`,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden"
+        }}
+      >
+        {/* Docked Header */}
+        <Box 
+          sx={{ 
+            p: 2, 
+            borderBottom: `1px solid ${tokens.border}`, 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "space-between",
+            backgroundColor: tokens.surface2
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <PlatformIcon sx={{ fontSize: 16, color: tokens.signal }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, letterSpacing: "0.5px" }}>
+              WORKSPACE GUIDE
+            </Typography>
+          </Box>
+          <Button
+            size="small"
+            variant="text"
+            onClick={toggleDockLanding}
+            sx={{ color: tokens.textSecondary, minWidth: 0, p: 0.5, fontSize: "0.75rem", fontWeight: 700 }}
+          >
+            Hide
+          </Button>
+        </Box>
+
+        {/* Docked Scrollable Body */}
+        <Box sx={{ flex: 1, overflowY: "auto", p: 2, display: "flex", flexDirection: "column", gap: 3 }}>
+          <Typography variant="body2" sx={{ color: tokens.textSecondary, lineHeight: 1.5 }}>
+            Welcome to the **Vector Space Platform**! This guide outlines the active features and operations of your workspace.
+          </Typography>
+          
+          <Divider sx={{ borderColor: tokens.border }} />
+
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: tokens.signal, fontSize: "0.8rem", letterSpacing: "0.5px" }}>
+            Key Platform Features
+          </Typography>
+
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
+            {features.map((f, idx) => (
+              <Box key={idx} sx={{ display: "flex", gap: 1.5 }}>
+                <Box sx={{ mt: 0.5 }}>{f.icon}</Box>
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 700, fontSize: "0.8rem", color: tokens.textPrimary }}>
+                    {f.title}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: tokens.textMuted, display: "block", lineHeight: 1.4, mt: 0.2 }}>
+                    {f.description}
+                  </Typography>
+                </Box>
+              </Box>
+            ))}
+          </Box>
+
+          <Divider sx={{ borderColor: tokens.border }} />
+
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: tokens.signal, fontSize: "0.8rem", letterSpacing: "0.5px" }}>
+            Pipeline Steps
+          </Typography>
+
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pb: 4 }}>
+            <Box sx={{ pl: 1, borderLeft: `2px solid ${tokens.accent}` }}>
+               <Typography variant="caption" sx={{ fontWeight: 700, color: tokens.textSecondary, display: "block" }}>01. DATA INGESTION</Typography>
+               <Typography variant="caption" sx={{ color: tokens.textMuted, display: "block", mt: 0.2 }}>
+                 Upload Excel/CSV, paste text, or select sample datasets.
+               </Typography>
+            </Box>
+            <Box sx={{ pl: 1, borderLeft: `2px solid ${tokens.signal}` }}>
+               <Typography variant="caption" sx={{ fontWeight: 700, color: tokens.textSecondary, display: "block" }}>02. VECTORIZATION</Typography>
+               <Typography variant="caption" sx={{ color: tokens.textMuted, display: "block", mt: 0.2 }}>
+                 Generate vectors with Gemini, Hugging Face, or local model.
+               </Typography>
+            </Box>
+            <Box sx={{ pl: 1, borderLeft: `2px solid ${tokens.accent}` }}>
+               <Typography variant="caption" sx={{ fontWeight: 700, color: tokens.textSecondary, display: "block" }}>03. CLUSTERING & PROJECTION</Typography>
+               <Typography variant="caption" sx={{ color: tokens.textMuted, display: "block", mt: 0.2 }}>
+                 PCA, t-SNE, or UMAP projects to 3D. KMeans runs automatically.
+               </Typography>
+            </Box>
+            <Box sx={{ pl: 1, borderLeft: `2px solid ${tokens.signal}` }}>
+               <Typography variant="caption" sx={{ fontWeight: 700, color: tokens.textSecondary, display: "block" }}>04. EXPLORE & CHAT</Typography>
+               <Typography variant="caption" sx={{ color: tokens.textMuted, display: "block", mt: 0.2 }}>
+                 Navigate points in 3D, calculate similarity, and chat with RAG.
+               </Typography>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box

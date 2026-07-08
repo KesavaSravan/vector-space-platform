@@ -47,7 +47,7 @@ export default function AlgorithmPanel() {
   };
 
   const handleColorByChange = (e, val) => {
-    if (val !== null && state.mode !== "alert") {
+    if (val !== null) {
       updateAlgo({ colorBy: val });
     }
   };
@@ -276,18 +276,12 @@ export default function AlgorithmPanel() {
             value={state.algo.colorBy}
             exclusive
             onChange={handleColorByChange}
-            disabled={state.mode === "alert"}
             size="small"
             fullWidth
           >
             <ToggleButton value="cluster">Cluster Colors</ToggleButton>
             <ToggleButton value="severity">Severity Alerts</ToggleButton>
           </ToggleButtonGroup>
-          {state.mode === "alert" && (
-            <Typography variant="caption" sx={{ color: tokens.signal, fontStyle: "italic", fontSize: "0.7rem", mt: 0.5 }}>
-              * Severity coloring locked in Alert Intel mode.
-            </Typography>
-          )}
         </Box>
       </Box>
     </Box>

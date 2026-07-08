@@ -3,8 +3,15 @@ import axios from "axios";
 // If the environment variable VITE_API_URL points to the docker-internal service (e.g. http://backend:8000)
 // or local host (http://localhost:8000), we fallback to "/api" so Nginx/Vite proxies can strip the prefix
 // and route requests correctly from the user's browser.
-const envUrl = import.meta.env.VITE_API_URL || "https://backend-570296158927.asia-south1.run.app";
-const baseURL = (envUrl.includes("//backend:") || envUrl === "http://localhost:8000") ? "/api" : envUrl;
+const envUrl = import.meta.env.VITE_API_URL;
+let baseURL = "/api"; // Default local development proxy
+
+if (envUrl) {
+  baseURL = (envUrl.includes("//backend:") || envUrl === "http://localhost:8000") ? "/api" : envUrl;
+} else if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+  // Use production Cloud Run backend if not running on localhost
+  baseURL = "https://backend-570296158927.asia-south1.run.app";
+}
 
 const client = axios.create({
   baseURL
@@ -95,6 +102,12 @@ export const api = {
     const response = await client.get("/download-embeddings-csv", {
       responseType: "blob"
     });
+    return response.data;
+  },
+
+  postChat: async (params) => {
+    // params: { message, chat_history, provider, model, api_key, use_rag, top_k }
+    const response = await client.post("/chat", params);
     return response.data;
   }
 };
