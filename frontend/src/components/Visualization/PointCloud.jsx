@@ -47,12 +47,16 @@ export default function PointCloud() {
       const normCoords = normalizeCoords(p.coords, transform);
       tempObject.position.set(normCoords[0], normCoords[1], normCoords[2]);
 
-      // Scale (selected = large, hovered = medium, neighbor = intermediate, default = small)
+      // Scale (selected = large, hovered = medium, chatRef = intermediate-large, neighbor = intermediate, default = small)
       let size = 0.075;
+      const isChatRef = state.chatReferences && state.chatReferences.includes(p.id);
+
       if (p.id === state.selectedId) {
         size = 0.20;
       } else if (p.id === state.hoveredId) {
         size = 0.14;
+      } else if (isChatRef) {
+        size = 0.13;
       } else if (neighborScores[p.id] !== undefined) {
         size = 0.11;
       }
@@ -65,6 +69,8 @@ export default function PointCloud() {
       let hexColor = "#8E8E93";
       if (p.id === state.selectedId) {
         hexColor = tokens.signal; // selection is Cyan
+      } else if (isChatRef) {
+        hexColor = "#FF9500"; // Orange highlight for RAG references
       } else if (neighborScores[p.id] !== undefined) {
         hexColor = "#54FFF0"; // Soft cyan for neighbors
       } else if (state.algo.colorBy === "severity") {
@@ -88,6 +94,7 @@ export default function PointCloud() {
     filteredPoints,
     state.selectedId,
     state.hoveredId,
+    state.chatReferences,
     neighborScores,
     state.algo.colorBy,
     transform,

@@ -42,7 +42,20 @@ const initialState = {
   },
   error: null,
   notice: null,
-  lastUploadSummary: null
+  lastUploadSummary: null,
+  dockLanding: false,
+  chatMessages: [],
+  chatLoading: false,
+  chatReferences: [],
+  chatSettings: {
+    provider: "gemini",
+    model: "gemini-2.5-flash",
+    apiKey: "",
+    groqKey: "",
+    embeddingApiKey: "",
+    useRag: false,
+    topK: 5
+  }
 };
 
 // Reducer Actions
@@ -52,6 +65,11 @@ function appReducer(state, action) {
       return {
         ...state,
         view: action.payload
+      };
+    case "TOGGLE_DOCK_LANDING":
+      return {
+        ...state,
+        dockLanding: !state.dockLanding
       };
     case "SET_MODE":
       return {
@@ -171,6 +189,16 @@ function appReducer(state, action) {
         ...state,
         statistics: action.payload
       };
+    case "SET_CHAT_LOADING":
+      return { ...state, chatLoading: action.payload };
+    case "SEND_CHAT_MESSAGE":
+      return { ...state, chatMessages: [...state.chatMessages, action.payload] };
+    case "SET_CHAT_REFERENCES":
+      return { ...state, chatReferences: action.payload };
+    case "UPDATE_CHAT_SETTINGS":
+      return { ...state, chatSettings: { ...state.chatSettings, ...action.payload } };
+    case "CLEAR_CHAT":
+      return { ...state, chatMessages: [], chatReferences: [] };
     case "CLEAR_ALL":
       return {
         ...initialState,
@@ -410,8 +438,74 @@ export function useAppActions() {
     dispatch({ type: "SET_MODE", payload: mode });
   };
 
+  const updateChatSettings = (settings) => {
+    dispatch({ type: "UPDATE_CHAT_SETTINGS", payload: settings });
+  };
+
+  const clearChat = () => {
+    dispatch({ type: "CLEAR_CHAT" });
+  };
+
+  const setChatReferences = (ids) => {
+    dispatch({ type: "SET_CHAT_REFERENCES", payload: ids });
+  };
+
+  const sendChatMessage = async (messageText) => {
+    if (!messageText.trim()) return;
+
+    const userMsg = { role: "user", content: messageText };
+    dispatch({ type: "SEND_CHAT_MESSAGE", payload: userMsg });
+    dispatch({ type: "SET_CHAT_LOADING", payload: true });
+
+    try {
+      const chatHistory = state.chatMessages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+
+      const activeKey = state.chatSettings.provider === "gemini" 
+        ? state.chatSettings.apiKey 
+        : state.chatSettings.groqKey;
+
+      const response = await api.postChat({
+        message: messageText,
+        chat_history: chatHistory,
+        provider: state.chatSettings.provider,
+        model: state.chatSettings.model,
+        api_key: activeKey || undefined,
+        embedding_api_key: state.chatSettings.embeddingApiKey || undefined,
+        use_rag: state.chatSettings.useRag,
+        top_k: state.chatSettings.topK
+      });
+
+      const assistantMsg = { 
+        role: "assistant", 
+        content: response.answer,
+        context_nodes: response.context_nodes 
+      };
+      
+      dispatch({ type: "SEND_CHAT_MESSAGE", payload: assistantMsg });
+      
+      if (state.chatSettings.useRag && response.context_nodes) {
+        const ids = response.context_nodes.map(n => n.id);
+        dispatch({ type: "SET_CHAT_REFERENCES", payload: ids });
+      } else {
+        dispatch({ type: "SET_CHAT_REFERENCES", payload: [] });
+      }
+
+    } catch (err) {
+      setError(err);
+    } finally {
+      dispatch({ type: "SET_CHAT_LOADING", payload: false });
+    }
+  };
+
   const setView = (view) => {
     dispatch({ type: "SET_VIEW", payload: view });
+  };
+
+  const toggleDockLanding = () => {
+    dispatch({ type: "TOGGLE_DOCK_LANDING" });
   };
 
   return {
@@ -432,9 +526,14 @@ export function useAppActions() {
     setHovered,
     setMode,
     setView,
+    toggleDockLanding,
     setError,
     clearError,
     clearNotice,
-    setNotice
+    setNotice,
+    updateChatSettings,
+    clearChat,
+    setChatReferences,
+    sendChatMessage
   };
 }

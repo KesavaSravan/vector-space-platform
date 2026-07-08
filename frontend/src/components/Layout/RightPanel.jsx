@@ -4,13 +4,15 @@ import {
   InfoOutlined as InfoIcon,
   CompareArrows as SimilarityIcon,
   BarChart as AnalyticsIcon,
-  Timeline as TimelineIcon
+  Timeline as TimelineIcon,
+  ChatOutlined as ChatIcon
 } from "@mui/icons-material";
 import { useAppState } from "../../context/AppContext";
 import VectorDetails from "../Details/VectorDetails";
 import SimilarityResults from "../Details/SimilarityResults";
 import AnalyticsDashboard from "../Analytics/AnalyticsDashboard";
 import AlertTimeline from "../Analytics/AlertTimeline";
+import AIChatPanel from "../Details/AIChatPanel";
 import { tokens } from "../../theme";
 
 export default function RightPanel() {
@@ -23,7 +25,7 @@ export default function RightPanel() {
 
   // If we change modes and Timeline tab was active, fallback to Details (0)
   useEffect(() => {
-    if (state.mode !== "alert" && tabValue === 3) {
+    if (state.mode !== "alert" && tabValue === 4) {
       setTabValue(0);
     }
   }, [state.mode, tabValue]);
@@ -54,15 +56,17 @@ export default function RightPanel() {
         onChange={handleTabChange}
         variant="fullWidth"
         sx={{
-          backgroundColor: tokens.surface2
+          backgroundColor: tokens.surface2,
+          "& .MuiTabs-flexContainer": {
+            flexWrap: "wrap"
+          }
         }}
       >
         <Tab icon={<InfoIcon sx={{ fontSize: 16 }} />} label="Details" />
         <Tab icon={<SimilarityIcon sx={{ fontSize: 16 }} />} label="Matches" />
         <Tab icon={<AnalyticsIcon sx={{ fontSize: 16 }} />} label="Stats" />
-        {state.mode === "alert" && (
-          <Tab icon={<TimelineIcon sx={{ fontSize: 16 }} />} label="Timeline" />
-        )}
+        <Tab icon={<ChatIcon sx={{ fontSize: 16 }} />} label="Chat" />
+        {/* Removed alert timeline tab */}
       </Tabs>
 
       {/* Tab Panels */}
@@ -82,12 +86,14 @@ export default function RightPanel() {
             <AnalyticsDashboard />
           </Box>
         )}
-        {tabValue === 3 && state.mode === "alert" && (
-          <Box className="scrollable-panel" sx={{ p: 2 }}>
-            <AlertTimeline />
+        {tabValue === 3 && (
+          <Box sx={{ p: 2, height: "100%" }}>
+            <AIChatPanel />
           </Box>
         )}
+        {/* Removed alert timeline panel */}
       </Box>
     </Box>
   );
 }
+

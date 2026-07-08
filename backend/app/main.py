@@ -22,7 +22,9 @@ from app.models import (
     ClusterResponse,
     ClusterItem,
     StatisticsResponse,
-    VectorInput
+    VectorInput,
+    ChatRequest,
+    ChatResponse
 )
 from app.store import store
 from app.ingest import parse_json_data, parse_csv_data
@@ -76,6 +78,8 @@ async def upload_vectors_file(file: UploadFile = File(...)):
             )
         
         summary = store.add_vectors(vectors)
+        if not store.embedding_provider:
+            store.set_embedding_metadata("precomputed", "unknown")
         return summary
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -92,6 +96,8 @@ def upload_vectors_json(request: UploadVectorsJSONRequest):
     """
     try:
         summary = store.add_vectors(request.vectors)
+        if not store.embedding_provider:
+            store.set_embedding_metadata("precomputed", "unknown")
         return summary
     except Exception as e:
         raise HTTPException(
@@ -334,7 +340,18 @@ def get_store_statistics():
     """
     all_vectors = store.get_all_vectors()
     stats = calculate_statistics(all_vectors)
-    return stats
+    
+    # Inject embedding metadata
+    if hasattr(stats, "dict"):
+        stats_dict = stats.dict()
+    elif isinstance(stats, dict):
+        stats_dict = stats
+    else:
+        stats_dict = dict(stats)
+        
+    stats_dict["embedding_provider"] = store.embedding_provider
+    stats_dict["embedding_model"] = store.embedding_model
+    return stats_dict
 
 @app.post("/generate-embeddings")
 def generate_ai_embeddings(request: GenerateEmbeddingsRequest):
@@ -406,6 +423,7 @@ def generate_ai_embeddings(request: GenerateEmbeddingsRequest):
             ))
             
         summary = store.add_vectors(new_vectors)
+        store.set_embedding_metadata(request.provider, model_used, request.api_key)
         
         # Add the requested additional keys
         summary.update({
@@ -434,16 +452,24 @@ def embedding_diagnostic():
     Diagnostic endpoint to check the state of embedding providers and env loading.
     """
     gemini_key = os.getenv("GEMINI_API_KEY")
+    groq_key = os.getenv("GROQ_API_KEY")
     has_gemini = gemini_key is not None
+    has_groq = groq_key is not None
     
-    # Mask key if present
-    masked_key = None
+    # Mask keys if present
+    masked_gemini = None
     if has_gemini:
-        masked_key = gemini_key[:8] + "..." + gemini_key[-4:] if len(gemini_key) > 12 else "configured (short key)"
+        masked_gemini = gemini_key[:8] + "..." + gemini_key[-4:] if len(gemini_key) > 12 else "configured (short key)"
+        
+    masked_groq = None
+    if has_groq:
+        masked_groq = groq_key[:8] + "..." + groq_key[-4:] if len(groq_key) > 12 else "configured (short key)"
         
     status_info = {
         "gemini_api_key_configured": has_gemini,
-        "gemini_api_key_masked": masked_key,
+        "gemini_api_key_masked": masked_gemini,
+        "groq_api_key_configured": has_groq,
+        "groq_api_key_masked": masked_groq,
         "active_default_provider": "gemini" if has_gemini else "sentence-transformers",
         "working_directory": os.getcwd(),
         "env_search_paths": [
@@ -463,6 +489,17 @@ def embedding_diagnostic():
         status_info["local_minilm_status"] = "available"
     except Exception as e:
         status_info["local_minilm_status"] = f"unavailable: {str(e)}"
+        
+    # Check FAISS status
+    try:
+        from app.store import FAISS_AVAILABLE, store
+        status_info["faiss_library_available"] = FAISS_AVAILABLE
+        status_info["faiss_index_active"] = store.faiss_index is not None
+        status_info["faiss_index_vectors_count"] = len(store.vector_id_list) if store.faiss_index is not None else 0
+        status_info["store_dimension"] = store.get_dimension()
+    except Exception as e:
+        status_info["faiss_library_available"] = False
+        status_info["faiss_status_error"] = str(e)
         
     return status_info
 
@@ -556,6 +593,7 @@ def generate_embeddings_text(request: GenerateEmbeddingsTextRequest):
             ))
             
         summary = store.add_vectors(new_vectors)
+        store.set_embedding_metadata(request.provider, model_used, request.api_key)
         
         # Add additional metadata keys
         summary.update({
@@ -728,6 +766,7 @@ async def generate_embeddings_file(
         ))
         
     summary = store.add_vectors(new_vectors)
+    store.set_embedding_metadata(provider, model_used, api_key)
     
     # Add additional metadata keys
     summary.update({
@@ -761,10 +800,18 @@ def download_embeddings_csv():
     all_vectors = store.get_all_vectors()
     rows = []
     
+    # Retrieve active dataset embedding provider, model, and dimension
+    provider = store.embedding_provider or "precomputed"
+    model = store.embedding_model or "unknown"
+    dimension = store.get_dimension() or 0
+    
     for v in all_vectors:
         row = {
             "Number": v["metadata"].get("original_number", v["id"]),
-            "Text": v["metadata"].get("original_text", v["label"])
+            "Text": v["metadata"].get("original_text", v["label"]),
+            "Embedding_Provider": provider,
+            "Embedding_Model": model,
+            "Vector_Dimension": dimension
         }
         embedding = v["embedding"]
         for i, val in enumerate(embedding, 1):
@@ -792,5 +839,33 @@ def download_embeddings_csv():
             "Content-Disposition": "attachment; filename=vector_embeddings.csv"
         }
     )
+
+@app.post("/chat", response_model=ChatResponse)
+def chat_endpoint(request: ChatRequest):
+    """
+    Endpoint to interact with a conversational LLM (Gemini or Groq Llama 3.3)
+    optionally augmented with context retrieved from the current vector space.
+    """
+    from app.chat import run_chat_query
+    try:
+        answer, context_nodes = run_chat_query(
+            message=request.message,
+            chat_history=request.chat_history,
+            provider=request.provider,
+            model=request.model,
+            api_key=request.api_key,
+            embedding_api_key=request.embedding_api_key,
+            use_rag=request.use_rag,
+            top_k=request.top_k
+        )
+        return ChatResponse(answer=answer, context_nodes=context_nodes)
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Chat execution failed: {str(e)}"
+        )
+
 
 

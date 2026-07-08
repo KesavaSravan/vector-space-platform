@@ -14,6 +14,9 @@ def parse_json_data(content: bytes) -> List[VectorInput]:
         raise ValueError("JSON data must be a list of vector objects.")
     
     parsed = []
+    detected_provider = None
+    detected_model = None
+    
     for idx, item in enumerate(data):
         if not isinstance(item, dict):
             raise ValueError(f"Item at index {idx} is not a valid object.")
@@ -33,12 +36,29 @@ def parse_json_data(content: bytes) -> List[VectorInput]:
         # Ensure embedding contains floats
         float_embedding = [float(x) for x in embedding]
 
+        # Extract RAG metadata from the first item
+        if idx == 0 and isinstance(metadata, dict):
+            detected_provider = metadata.get("Embedding_Provider")
+            detected_model = metadata.get("Embedding_Model")
+
+        # Capture metadata excluding RAG specific ones
+        clean_metadata = {}
+        if isinstance(metadata, dict):
+            for k, v in metadata.items():
+                if k not in ["Embedding_Provider", "Embedding_Model", "Vector_Dimension"]:
+                    clean_metadata[k] = v
+
         parsed.append(VectorInput(
             id=str(vid),
             label=str(label),
             embedding=float_embedding,
-            metadata=dict(metadata)
+            metadata=clean_metadata
         ))
+        
+    if detected_provider:
+        from app.store import store
+        store.set_embedding_metadata(detected_provider, detected_model or "unknown")
+        
     return parsed
 
 def parse_csv_data(content: bytes) -> List[VectorInput]:
@@ -54,6 +74,9 @@ def parse_csv_data(content: bytes) -> List[VectorInput]:
     reader = csv.DictReader(f)
     
     parsed = []
+    detected_provider = None
+    detected_model = None
+    
     for idx, row in enumerate(reader):
         vid = None
         for key in ["id", "Number", "number", "no.", "no", "ID", "NUM"]:
@@ -74,6 +97,11 @@ def parse_csv_data(content: bytes) -> List[VectorInput]:
 
         embedding = []
         metadata = {}
+
+        # Extract RAG metadata from the first row
+        if idx == 0:
+            detected_provider = row.get("Embedding_Provider")
+            detected_model = row.get("Embedding_Model")
 
         # 1. Check for single stringified embedding array column
         if "embedding" in row and row["embedding"]:
@@ -101,9 +129,9 @@ def parse_csv_data(content: bytes) -> List[VectorInput]:
             else:
                 raise ValueError(f"Row {idx} ('{vid}') lacks an 'embedding' column or 'dim_X'/'Dimension_X' columns.")
 
-        # Capture other fields as metadata
+        # Capture other fields as metadata (skipping RAG file metadata)
         for k, v in row.items():
-            if k not in ["id", "label", "embedding", "Number", "number", "Text", "text"] and not str(k).lower().startswith("dim_") and not str(k).lower().startswith("dimension_"):
+            if k not in ["id", "label", "embedding", "Number", "number", "Text", "text", "Embedding_Provider", "Embedding_Model", "Vector_Dimension"] and not str(k).lower().startswith("dim_") and not str(k).lower().startswith("dimension_"):
                 metadata[k] = v
 
         parsed.append(VectorInput(
@@ -112,6 +140,10 @@ def parse_csv_data(content: bytes) -> List[VectorInput]:
             embedding=embedding,
             metadata=metadata
         ))
+
+    if detected_provider:
+        from app.store import store
+        store.set_embedding_metadata(detected_provider, detected_model or "unknown")
 
     return parsed
 

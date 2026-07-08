@@ -23,13 +23,7 @@ import { tokens } from "../../theme";
 
 export default function TopBar() {
   const state = useAppState();
-  const { setMode, setView } = useAppActions();
-
-  const handleModeChange = (event, newMode) => {
-    if (newMode !== null) {
-      setMode(newMode);
-    }
-  };
+  const { toggleDockLanding, setView } = useAppActions();
 
   // Determine if backend is loading any action
   const isLoading = Object.values(state.loading).some(Boolean);
@@ -55,26 +49,26 @@ export default function TopBar() {
           px: "16px !important"
         }}
       >
-        {/* Brand/Logo Section */}
-        <Box 
-          sx={{ display: "flex", alignItems: "center", gap: 1.5, cursor: "pointer" }}
-          onClick={() => setView("landing")}
-        >
-          <Box
-            sx={{
-              width: 32,
-              height: 32,
-              borderRadius: "8px",
-              background: `linear-gradient(135deg, ${tokens.accent} 0%, ${tokens.signal} 100%)`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: `0 0 12px ${tokens.accent}40`
-            }}
+        {/* Brand/Logo & Guide Toggle Section */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2.5 }}>
+          <Box 
+            sx={{ display: "flex", alignItems: "center", gap: 1.5, cursor: "pointer" }}
+            onClick={() => setView("landing")}
           >
-            <PlatformIcon sx={{ fontSize: 18, color: tokens.bg }} />
-          </Box>
-          <Box>
+            <Box
+              sx={{
+                width: 32,
+                height: 32,
+                borderRadius: "8px",
+                background: `linear-gradient(135deg, ${tokens.accent} 0%, ${tokens.signal} 100%)`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: `0 0 12px ${tokens.accent}40`
+              }}
+            >
+              <PlatformIcon sx={{ fontSize: 18, color: tokens.bg }} />
+            </Box>
             <Typography
               variant="subtitle1"
               className="font-display"
@@ -89,44 +83,29 @@ export default function TopBar() {
               VECTOR SPACE PLATFORM
             </Typography>
           </Box>
-        </Box>
 
-        {/* Mode Selector */}
-        <Box>
-          <ToggleButtonGroup
-            value={state.mode}
-            exclusive
-            onChange={handleModeChange}
+          <Button
             size="small"
+            variant="outlined"
+            onClick={toggleDockLanding}
+            startIcon={<InfoIcon sx={{ fontSize: 14 }} />}
             sx={{
-              backgroundColor: tokens.bg,
-              border: `1px solid ${tokens.border}`,
-              "& .MuiToggleButtonGroup-grouped": {
-                border: 0,
-                px: 2,
-                py: 0.5,
-                borderRadius: "6px",
-                color: tokens.textSecondary,
-                fontFamily: '"Space Grotesk", sans-serif',
-                fontWeight: 600,
-                fontSize: "0.75rem",
-                "&.Mui-selected": {
-                  backgroundColor: tokens.surface3,
-                  color: tokens.signal,
-                  "&:hover": {
-                    backgroundColor: tokens.surface3
-                  }
-                }
+              fontSize: "0.75rem",
+              py: 0.2,
+              px: 1.5,
+              height: 28,
+              borderRadius: "6px",
+              borderColor: state.dockLanding ? tokens.signal : tokens.border,
+              color: state.dockLanding ? tokens.signal : tokens.textSecondary,
+              backgroundColor: state.dockLanding ? `${tokens.signal}10` : "transparent",
+              "&:hover": {
+                borderColor: tokens.signal,
+                color: tokens.signal
               }
             }}
           >
-            <ToggleButton value="general">
-              General Mode
-            </ToggleButton>
-            <ToggleButton value="alert" sx={{ display: "flex", gap: 0.5 }}>
-              <DiagnosticIcon sx={{ fontSize: 14 }} /> Alert Intel
-            </ToggleButton>
-          </ToggleButtonGroup>
+            {state.dockLanding ? "Hide Guide" : "Show Guide"}
+          </Button>
         </Box>
 
         {/* Live stats chips */}

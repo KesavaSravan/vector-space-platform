@@ -15,3 +15,5 @@ python-dotenv
 openpyxl
 langchain
 langchain-huggingface
+langchain-groq
+langchain-google-genai
