@@ -146,7 +146,7 @@ export default function AIChatPanel() {
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", overflow: "hidden" }}>
       {/* 1. Header controls */}
-      <Box sx={{ borderBottom: `1px solid ${tokens.border}`, pb: 1, display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+      <Box sx={{ borderBottom: `1px solid ${tokens.border}`, pb: 1, display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5 }}>
         <Box>
           <Typography variant="subtitle2" sx={{ color: tokens.textPrimary, fontWeight: 700 }}>
             AI Assistant Chatbot
@@ -155,24 +155,11 @@ export default function AIChatPanel() {
             {chatSettings.provider === "gemini" ? "Gemini" : "Groq Llama 3.3"} RAG Chat
           </Typography>
         </Box>
-        <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
-          <IconButton 
-            size="small" 
-            onClick={() => setShowSettings(!showSettings)} 
-            sx={{ 
-              color: showSettings ? tokens.signal : tokens.textSecondary,
-              "&:hover": { color: tokens.signal } 
-            }}
-            title="Configure Chat & RAG Settings"
-          >
-            <SettingsIcon sx={{ fontSize: 18 }} />
+        {chatMessages.length > 0 && (
+          <IconButton size="small" onClick={handleClear} sx={{ color: tokens.textSecondary, "&:hover": { color: "#FF3B30" } }}>
+            <DeleteIcon sx={{ fontSize: 18 }} />
           </IconButton>
-          {chatMessages.length > 0 && (
-            <IconButton size="small" onClick={handleClear} sx={{ color: tokens.textSecondary, "&:hover": { color: "#FF3B30" } }}>
-              <DeleteIcon sx={{ fontSize: 18 }} />
-            </IconButton>
-          )}
-        </Box>
+        )}
       </Box>
 
       {/* Configuration Controls (Collapsible) */}
@@ -456,10 +443,32 @@ export default function AIChatPanel() {
           maxRows={2}
           onKeyDown={handleKeyPress}
           disabled={chatLoading}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <IconButton 
+                    size="small" 
+                    onClick={() => setShowSettings(!showSettings)} 
+                    sx={{ 
+                      color: showSettings ? tokens.signal : tokens.textSecondary,
+                      "&:hover": { color: tokens.signal },
+                      mr: 0.5,
+                      p: 0.25
+                    }}
+                    title="Configure Chat & RAG Settings"
+                  >
+                    <SettingsIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </InputAdornment>
+              )
+            }
+          }}
           sx={{
             "& .MuiOutlinedInput-root": {
               backgroundColor: tokens.bg,
-              fontSize: "0.85rem"
+              fontSize: "0.85rem",
+              pl: 1
             }
           }}
         />
