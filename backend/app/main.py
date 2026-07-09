@@ -24,7 +24,8 @@ from app.models import (
     StatisticsResponse,
     VectorInput,
     ChatRequest,
-    ChatResponse
+    ChatResponse,
+    BulkUpdateRequest
 )
 from app.store import store
 from app.ingest import parse_json_data, parse_csv_data
@@ -113,6 +114,25 @@ def delete_all_vectors():
     store.clear()
     return {"status": "success", "message": "All vectors cleared from store."}
 
+@app.post("/vectors/bulk-update")
+def bulk_update_vectors(request: BulkUpdateRequest):
+    """
+    Updates fields (label, cluster, severity, metadata) for a list of vector IDs.
+    """
+    if not store.has_vectors():
+        raise HTTPException(
+            status_code=400,
+            detail="No vectors are loaded in the system."
+        )
+    try:
+        store.bulk_update_vectors(request.ids, request.fields)
+        return {"status": "success", "message": f"Successfully updated {len(request.ids)} vectors."}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to perform bulk update: {str(e)}"
+        )
+
 @app.get("/vectors")
 def get_vectors_paginated(
     page: int = Query(1, ge=1),
@@ -189,15 +209,36 @@ def reduce_vectors_dimensions(request: ReductionRequest):
     embeddings = [v["embedding"] for v in all_vectors]
     
     try:
-        reduced_coords = reduce_dimensions(
+        # Determine if we can use cached models
+        scaler_in = None
+        reducer_in = None
+        if (
+            request.incremental
+            and store.reducer_scaler is not None
+            and store.reducer_model is not None
+            and store.reducer_method == request.method.lower()
+            and store.reducer_n_components == request.n_components
+        ):
+            scaler_in = store.reducer_scaler
+            reducer_in = store.reducer_model
+
+        reduced_coords, scaler_out, reducer_out = reduce_dimensions(
             embeddings=embeddings,
             method=request.method,
             n_components=request.n_components,
             perplexity=request.perplexity,
             n_neighbors=request.n_neighbors,
-            min_dist=request.min_dist
+            min_dist=request.min_dist,
+            scaler_model=scaler_in,
+            reducer_model=reducer_in
         )
         
+        # Save fitted models to store
+        store.reducer_scaler = scaler_out
+        store.reducer_model = reducer_out
+        store.reducer_method = request.method.lower()
+        store.reducer_n_components = request.n_components
+
         # Save to store and map coordinates
         coords_mapping = {}
         response_data = []
@@ -848,7 +889,7 @@ def chat_endpoint(request: ChatRequest):
     """
     from app.chat import run_chat_query
     try:
-        answer, context_nodes = run_chat_query(
+        answer, context_nodes, ui_actions = run_chat_query(
             message=request.message,
             chat_history=request.chat_history,
             provider=request.provider,
@@ -858,7 +899,7 @@ def chat_endpoint(request: ChatRequest):
             use_rag=request.use_rag,
             top_k=request.top_k
         )
-        return ChatResponse(answer=answer, context_nodes=context_nodes)
+        return ChatResponse(answer=answer, context_nodes=context_nodes, ui_actions=ui_actions)
     except HTTPException as he:
         raise he
     except Exception as e:

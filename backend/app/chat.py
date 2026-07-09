@@ -59,6 +59,33 @@ def text_based_keyword_search(query: str, all_vectors: List[Dict[str, Any]], top
     return results
 
 
+def parse_ui_actions(text: str) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Looks for <ui_actions>[...]</ui_actions> in the text.
+    Extracts the JSON array, parses it, removes the XML tags and content from the text,
+    and returns (cleaned_text, ui_actions_list).
+    """
+    import re
+    import json
+    pattern = r"<ui_actions>(.*?)</ui_actions>"
+    match = re.search(pattern, text, re.DOTALL)
+    if not match:
+        return text, []
+    
+    json_str = match.group(1).strip()
+    cleaned_text = re.sub(pattern, "", text, flags=re.DOTALL).strip()
+    
+    try:
+        ui_actions = json.loads(json_str)
+        if isinstance(ui_actions, list):
+            return cleaned_text, ui_actions
+        elif isinstance(ui_actions, dict):
+            return cleaned_text, [ui_actions]
+    except Exception as e:
+        logger.warning(f"Failed to parse ui_actions JSON: {str(e)}")
+        
+    return cleaned_text, []
+
 def run_chat_query(
     message: str,
     chat_history: List[ChatMessage],
@@ -68,10 +95,10 @@ def run_chat_query(
     embedding_api_key: Optional[str] = None,
     use_rag: bool = False,
     top_k: int = 5
-) -> Tuple[str, List[Dict[str, Any]]]:
+) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Orchestrates the LLM execution using LangChain, with optional RAG retrieval
-    from the VectorStore. Returns a tuple of (answer_text, context_nodes).
+    from the VectorStore. Returns a tuple of (answer_text, context_nodes, ui_actions).
     """
     if not LANGCHAIN_CHAT_AVAILABLE:
         raise HTTPException(
@@ -221,6 +248,23 @@ def run_chat_query(
             "Explain concepts generally or ask them to enable context if they want to ask about their uploaded dataset."
         )
 
+    system_prompt += (
+        "\n\nUI CONTROL CAPABILITIES:\n"
+        "You can control the 3D visualization and dashboard UI on behalf of the user by writing commands. If the user asks you to filter, color, or select specific points, or if doing so would help answer their question visually, you MUST include a list of UI commands at the end of your response inside a <ui_actions>[...]</ui_actions> XML block.\n"
+        "Format the contents of the block as a valid JSON array of objects.\n"
+        "Supported actions:\n"
+        "1. {\"action\": \"set_color_by\", \"value\": \"cluster\" | \"severity\" | \"metadata:<key>\"}\n"
+        "2. {\"action\": \"set_filter\", \"field\": \"severityFilter\" | \"clusterFilter\" | \"search\" | \"metadataKey\" | \"metadataValue\", \"value\": string}\n"
+        "3. {\"action\": \"select_node\", \"id\": string}\n"
+        "4. {\"action\": \"reset_filters\"}\n\n"
+        "Example: If the user says 'Highlight critical errors and color them by severity', you should reply with a helpful text description, and at the very end of your response write:\n"
+        "<ui_actions>[\n"
+        "  {\"action\": \"set_color_by\", \"value\": \"severity\"},\n"
+        "  {\"action\": \"set_filter\", \"field\": \"severityFilter\", \"value\": \"Critical\"}\n"
+        "]</ui_actions>\n"
+        "Never mention the <ui_actions> tags to the user directly, they will be processed behind the scenes."
+    )
+
     # 3. Create LangChain LLM instance
     llm = None
     if provider == "groq":
@@ -287,7 +331,8 @@ def run_chat_query(
     try:
         response = llm.invoke(messages)
         answer = str(response.content)
-        return answer, context_nodes
+        cleaned_answer, ui_actions = parse_ui_actions(answer)
+        return cleaned_answer, context_nodes, ui_actions
     except Exception as e:
         logger.error(f"LLM generation failed: {str(e)}")
         raise HTTPException(

@@ -26,6 +26,11 @@ class VectorStore:
         self.embedding_provider: Optional[str] = None
         self.embedding_model: Optional[str] = None
         self.embedding_api_key: Optional[str] = None
+        # Cache projection models for incremental projections
+        self.reducer_model = None
+        self.reducer_scaler = None
+        self.reducer_method = None
+        self.reducer_n_components = None
 
     def set_embedding_metadata(self, provider: str, model: str, api_key: Optional[str] = None):
         with self.lock:
@@ -142,6 +147,10 @@ class VectorStore:
             self.embedding_provider = None
             self.embedding_model = None
             self.embedding_api_key = None
+            self.reducer_model = None
+            self.reducer_scaler = None
+            self.reducer_method = None
+            self.reducer_n_components = None
 
     def get_all_vectors(self) -> List[Dict[str, Any]]:
         with self.lock:
@@ -160,6 +169,25 @@ class VectorStore:
     def update_coords(self, coords_mappings: Dict[str, List[float]]):
         with self.lock:
             self.coords = coords_mappings.copy()
+
+    def bulk_update_vectors(self, vector_ids: List[str], fields: Dict[str, Any]):
+        with self.lock:
+            for vid in vector_ids:
+                if vid in self.vectors:
+                    # Update label
+                    if "label" in fields:
+                        self.vectors[vid]["label"] = fields["label"]
+                    # Update cluster
+                    if "cluster" in fields:
+                        self.vectors[vid]["cluster"] = int(fields["cluster"])
+                    # Update severity
+                    if "severity" in fields:
+                        sev = fields["severity"]
+                        if sev in ["Critical", "High", "Medium", "Low"]:
+                            self.vectors[vid]["metadata"]["severity"] = sev
+                    # Update metadata nested fields
+                    if "metadata" in fields and isinstance(fields["metadata"], dict):
+                        self.vectors[vid]["metadata"].update(fields["metadata"])
 
     def get_coords(self) -> Dict[str, List[float]]:
         with self.lock:

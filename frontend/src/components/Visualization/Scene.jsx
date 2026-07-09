@@ -4,6 +4,8 @@ import { OrbitControls } from "@react-three/drei";
 import { Box } from "@mui/material";
 import PointCloud from "./PointCloud";
 import ConnectionLines from "./ConnectionLines";
+import ChatConnectionLines from "./ChatConnectionLines";
+import LassoOverlay from "./LassoOverlay";
 import AxesGrid from "./AxesGrid";
 import ViewportHUD from "./ViewportHUD";
 import HoverTooltip from "./HoverTooltip";
@@ -69,8 +71,15 @@ export default function Scene() {
           {/* 3D lines linking selection to similarity neighbors */}
           <ConnectionLines />
 
-          {/* Orbit controls */}
+          {/* 3D lines linking RAG retrieved chat references */}
+          <ChatConnectionLines />
+
+          {/* Lasso selection path SVG overlay */}
+          <LassoOverlay />
+
+          {/* Orbit controls - disabled while drawing lasso */}
           <OrbitControls
+            enabled={!state.lassoMode}
             enableDamping
             dampingFactor={0.05}
             minDistance={2}

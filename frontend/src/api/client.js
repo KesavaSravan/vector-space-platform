@@ -109,6 +109,11 @@ export const api = {
     // params: { message, chat_history, provider, model, api_key, use_rag, top_k }
     const response = await client.post("/chat", params);
     return response.data;
+  },
+
+  bulkUpdateVectors: async (ids, fields) => {
+    const response = await client.post("/vectors/bulk-update", { ids, fields });
+    return response.data;
   }
 };
 
