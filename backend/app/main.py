@@ -641,32 +641,41 @@ async def generate_embeddings_file(
     
     # Dynamic columns upload flow
     if id_column and vector_columns:
-        if id_column not in df.columns:
+        # Create a mapping of stringified column names to original column objects
+        # to support numeric/integer columns and prevent type mismatches.
+        columns_map = {str(col).strip(): col for col in df.columns}
+        
+        id_col_str = str(id_column).strip()
+        if id_col_str not in columns_map:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unique ID column '{id_column}' not found in the uploaded file."
+                detail=f"Unique ID column '{id_column}' not found in the uploaded file. Available columns: {list(columns_map.keys())}"
             )
+        actual_id_col = columns_map[id_col_str]
             
         # Parse vector columns parameter (can be JSON array or comma separated string)
-        vector_cols = []
+        vector_cols_raw = []
         try:
             parsed = json.loads(vector_columns)
             if isinstance(parsed, list):
-                vector_cols = [str(c) for c in parsed]
+                vector_cols_raw = [str(c) for c in parsed]
             else:
-                vector_cols = [str(vector_columns)]
+                vector_cols_raw = [str(vector_columns)]
         except Exception:
-            vector_cols = [c.strip() for c in vector_columns.split(",") if c.strip()]
+            vector_cols_raw = [c.strip() for c in vector_columns.split(",") if c.strip()]
             
-        for v_col in vector_cols:
-            if v_col not in df.columns:
+        actual_vector_cols = []
+        for v_col in vector_cols_raw:
+            v_col_str = str(v_col).strip()
+            if v_col_str not in columns_map:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Vector column '{v_col}' not found in the uploaded file."
+                    detail=f"Vector column '{v_col}' not found in the uploaded file. Available columns: {list(columns_map.keys())}"
                 )
+            actual_vector_cols.append(columns_map[v_col_str])
                 
         # Validate ID column for null or empty values
-        null_count = int(df[id_column].isna().sum())
+        null_count = int(df[actual_id_col].isna().sum())
         if null_count > 0:
             raise HTTPException(
                 status_code=400,
@@ -674,7 +683,7 @@ async def generate_embeddings_file(
             )
             
         # Validate ID column for duplicates
-        id_series = df[id_column].astype(str).str.strip()
+        id_series = df[actual_id_col].astype(str).str.strip()
         duplicates = id_series[id_series.duplicated(keep=False)].unique()
         if len(duplicates) > 0:
             duplicate_example = ", ".join(list(duplicates[:5]))
@@ -687,16 +696,16 @@ async def generate_embeddings_file(
             
         # Combine columns and populate records
         for idx, row in df.iterrows():
-            if pd.isna(row[id_column]):
+            if pd.isna(row[actual_id_col]):
                 continue
-            vid = str(row[id_column]).strip()
+            vid = str(row[actual_id_col]).strip()
             if vid.endswith(".0"):
                 vid = vid[:-2]
             if not vid:
                 continue
                 
             text_parts = []
-            for col in vector_cols:
+            for col in actual_vector_cols:
                 val = row[col]
                 if not pd.isna(val) and str(val).strip() != "":
                     text_parts.append(str(val).strip())
