@@ -9,6 +9,7 @@ import {
 } from "@mui/icons-material";
 import { useAppState } from "../../context/AppContext";
 import VectorDetails from "../Details/VectorDetails";
+import BulkDetailsPanel from "../Details/BulkDetailsPanel";
 import SimilarityResults from "../Details/SimilarityResults";
 import AnalyticsDashboard from "../Analytics/AnalyticsDashboard";
 import AlertTimeline from "../Analytics/AlertTimeline";
@@ -32,11 +33,12 @@ export default function RightPanel() {
 
   // If a point is selected, we might want to auto-focus on either Details or Similarity tab. Let's keep it manual or adapt.
   useEffect(() => {
-    if (state.selectedId && tabValue === 2) {
+    const hasSelection = state.selectedId || (state.selectedIds && state.selectedIds.length > 0);
+    if (hasSelection && tabValue === 2) {
       // If statistics was active, focus on Details
       setTabValue(0);
     }
-  }, [state.selectedId]);
+  }, [state.selectedId, state.selectedIds]);
 
   return (
     <Box
@@ -93,7 +95,11 @@ export default function RightPanel() {
       <Box sx={{ flex: 1, overflow: "hidden", position: "relative" }}>
         {tabValue === 0 && (
           <Box className="scrollable-panel" sx={{ p: 2 }}>
-            <VectorDetails />
+            {state.selectedIds && state.selectedIds.length > 1 ? (
+              <BulkDetailsPanel />
+            ) : (
+              <VectorDetails />
+            )}
           </Box>
         )}
         {tabValue === 1 && (

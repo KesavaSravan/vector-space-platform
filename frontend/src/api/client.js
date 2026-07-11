@@ -1,15 +1,15 @@
 import axios from "axios";
 
-// If the environment variable VITE_API_URL points to the docker-internal service (e.g. http://backend:8000)
-// or local host (http://localhost:8000), we fallback to "/api" so Nginx/Vite proxies can strip the prefix
-// and route requests correctly from the user's browser.
+// If the environment variable VITE_API_URL is provided, use it (with fallback to "/api" proxy
+// if it references the docker-internal hostname or localhost).
+// If VITE_API_URL is not set, fallback to "/api" if running locally on localhost/127.0.0.1
+// and the GCP production URL otherwise.
 const envUrl = import.meta.env.VITE_API_URL;
-let baseURL = "/api"; // Default local development proxy
+let baseURL = "/api";
 
 if (envUrl) {
   baseURL = (envUrl.includes("//backend:") || envUrl === "http://localhost:8000") ? "/api" : envUrl;
 } else if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-  // Use production Cloud Run backend if not running on localhost
   baseURL = "https://backend-570296158927.asia-south1.run.app";
 }
 
@@ -98,6 +98,13 @@ export const api = {
     return response.data;
   },
 
+  parseHeaders: async (formData) => {
+    const response = await client.post("/parse-headers", formData, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
+    return response.data;
+  },
+
   downloadEmbeddingsCsv: async () => {
     const response = await client.get("/download-embeddings-csv", {
       responseType: "blob"
@@ -108,6 +115,11 @@ export const api = {
   postChat: async (params) => {
     // params: { message, chat_history, provider, model, api_key, use_rag, top_k }
     const response = await client.post("/chat", params);
+    return response.data;
+  },
+
+  bulkUpdateVectors: async (ids, fields) => {
+    const response = await client.post("/vectors/bulk-update", { ids, fields });
     return response.data;
   }
 };

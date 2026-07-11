@@ -5,15 +5,13 @@ A production-quality 3D platform for uploading, analyzing, clustering, and visua
 ## Key Features
 - **3D Visualization**: OrbitControls, Grid and Coordinate helper axes, and custom shaders/instancedMesh rendering supporting 100k+ data points.
 - **Dimensionality Reduction**: PCA, t-SNE, and UMAP algorithms.
-- **Clustering**: Interactive KMeans & DBSCAN parameter configuration with immediate visual updates.
-- **Similarity Search**: Interactive soft-cyan connecting lines showing cosine/Euclidean neighbors with score overlays. FAISS auto-enabled for datasets $\ge 5000$ items.
+- **Automatic Clustering**: Ingested vectors are partitioned into clusters automatically upon loading using KMeans, dynamically color-mapping the 3D space and dashboard metrics.
+- **Similarity Search**: Cosine similarity search using backend FAISS indices to perform real-time nearest neighbor retrieval and highlight links.
+- **AI RAG Chatbot**: Interactive chat log using LangChain (Groq Llama 3.3 & Gemini) to converse with your dataset. Dynamically prompts for API keys and injects context nodes.
+- **Dockable Workspace Guide**: Responsive capability guide that can be docked side-by-side next to the 3D scene or viewed fullscreen, toggleable via a header toolbar button.
+- **Self-Contained Data Exchange**: Export and import vector datasets alongside their embedding metadata (provider, model, dimensions), recreating the FAISS index without regenerating vectors.
 - **Analytics**: Hand-drawn dashboard graphs showing cluster/severity percentages and metrics (average similarity, outliers).
-- **Alert Intelligence Mode**: Built-in severity color schemes and dot-based chronological alert timeline.
-- **Capability Landing Page**: Modern, entry-level capability overview page showcasing the platform's workflow with a far-right **Home** navigation toggle to easily switch between the 3D visualizer workspace and the portal.
 - **AI Text Ingestion & Excel/CSV Parsing**: On-the-fly vectorization of raw text. Supports newline-separated lists, structured `Number - Text` rows, or standard Excel (`.xlsx`/`.xls`) and CSV uploads.
-- **Multi-Provider AI Embedding Mode**: Interactive integrations with Google Gemini, Hugging Face Hub (via LangChain), OpenAI, Azure OpenAI, and local Sentence Transformers.
-- **Hybrid Fallback & Lazy Loading**: Automatic fallback to local Sentence Transformers if cloud provider endpoints fail or hit rate limits, and lazy-loading of local models to minimize startup memory overhead.
-- **Vector Space Exporter**: Export the processed vector space as an ordered CSV file containing coordinates for all dimensions.
 
 ---
 
