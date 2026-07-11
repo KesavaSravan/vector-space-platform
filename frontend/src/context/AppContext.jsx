@@ -368,6 +368,16 @@ export function useAppActions() {
     }
   };
 
+  const parseHeaders = async (formData) => {
+    try {
+      const response = await api.parseHeaders(formData);
+      return response;
+    } catch (err) {
+      setError(err);
+      throw err;
+    }
+  };
+
   const downloadEmbeddingsCsv = async () => {
     try {
       const blob = await api.downloadEmbeddingsCsv();
@@ -424,6 +434,7 @@ export function useAppActions() {
     generateTextEmbeddings,
     generateTextEmbeddingsStructured,
     generateFileEmbeddings,
+    parseHeaders,
     downloadEmbeddingsCsv,
     clearAll,
     refreshStatistics,

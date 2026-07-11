@@ -8,6 +8,8 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Query, status, For
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any, Optional
+import io
+import pandas as pd
 
 from app.models import (
     UploadVectorsJSONRequest,
@@ -84,6 +86,39 @@ async def upload_vectors_file(file: UploadFile = File(...)):
             status_code=500,
             detail=f"An error occurred while processing the file upload: {str(e)}"
         )
+
+def parse_file_to_dataframe(file: UploadFile, content: bytes) -> pd.DataFrame:
+    filename = file.filename or ""
+    filename_lower = filename.lower()
+    try:
+        if filename_lower.endswith(".csv"):
+            text_content = content.decode("utf-8", errors="replace")
+            return pd.read_csv(io.StringIO(text_content))
+        elif filename_lower.endswith(".xlsx") or filename_lower.endswith(".xls"):
+            return pd.read_excel(io.BytesIO(content))
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported file format. Please upload an Excel (.xlsx/.xls) or CSV (.csv) file."
+            )
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to parse file: {str(e)}"
+        )
+
+@app.post("/parse-headers")
+async def parse_headers(file: UploadFile = File(...)):
+    """
+    Accepts an Excel (.xlsx/.xls) or CSV (.csv) file, parses it,
+    and returns all available column names (headers).
+    """
+    content = await file.read()
+    df = parse_file_to_dataframe(file, content)
+    headers = [str(col) for col in df.columns]
+    return {"headers": headers}
 
 @app.post("/upload-vectors-json")
 def upload_vectors_json(request: UploadVectorsJSONRequest):
@@ -586,98 +621,186 @@ async def generate_embeddings_file(
     api_key: Optional[str] = Form(None),
     azure_endpoint: Optional[str] = Form(None),
     azure_deployment: Optional[str] = Form(None),
-    batch_size: int = Form(100)
+    batch_size: int = Form(100),
+    id_column: Optional[str] = Form(None),
+    vector_columns: Optional[str] = Form(None)
 ):
     """
-    Accepts an Excel (.xlsx/.xls) or CSV (.csv) file, parses the columns 'Number' and 'Text',
-    generates embeddings for each row, and adds them to the store.
+    Accepts an Excel (.xlsx/.xls) or CSV (.csv) file, parses the selected ID and vector columns
+    (with dynamic mapping and validation), generates embeddings, and adds them to the store.
     """
     import math
     import time
-    import pandas as pd
-    import io
+    import json
     
     filename = file.filename or ""
-    filename_lower = filename.lower()
-    
     content = await file.read()
+    df = parse_file_to_dataframe(file, content)
     
-    try:
-        if filename_lower.endswith(".csv"):
-            text_content = content.decode("utf-8", errors="replace")
-            df = pd.read_csv(io.StringIO(text_content))
-        elif filename_lower.endswith(".xlsx") or filename_lower.endswith(".xls"):
-            df = pd.read_excel(io.BytesIO(content))
-        else:
+    parsed_records = []
+    
+    # Dynamic columns upload flow
+    if id_column and vector_columns:
+        if id_column not in df.columns:
             raise HTTPException(
                 status_code=400,
-                detail="Unsupported file format. Please upload an Excel (.xlsx/.xls) or CSV (.csv) file."
+                detail=f"Unique ID column '{id_column}' not found in the uploaded file."
             )
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(
-            status_code=400,
-            detail=f"Failed to parse file: {str(e)}"
-        )
-        
-    # Match columns case-insensitively
-    number_col = None
-    text_col = None
-    
-    for col in df.columns:
-        col_lower = str(col).strip().lower()
-        if col_lower in ["number", "no.", "no", "id", "num"]:
-            number_col = col
-        if col_lower in ["text", "content", "document", "text 1", "text_1"]:
-            text_col = col
             
-    # Fallbacks if columns are not named exactly
-    if not number_col and len(df.columns) > 0:
-        number_col = df.columns[0]
-    if not text_col and len(df.columns) > 1:
-        text_col = df.columns[1]
-        
-    if not number_col or not text_col:
-        raise HTTPException(
-            status_code=400,
-            detail="File must contain columns matching 'Number' and 'Text' (or at least two columns)."
-        )
-        
-    # Parse rows
-    parsed_records = []
-    for idx, row in df.iterrows():
-        num_val = row[number_col]
-        text_val = row[text_col]
-        
-        # Skip rows with empty text or empty number
-        if pd.isna(num_val) or pd.isna(text_val):
-            continue
+        # Parse vector columns parameter (can be JSON array or comma separated string)
+        vector_cols = []
+        try:
+            parsed = json.loads(vector_columns)
+            if isinstance(parsed, list):
+                vector_cols = [str(c) for c in parsed]
+            else:
+                vector_cols = [str(vector_columns)]
+        except Exception:
+            vector_cols = [c.strip() for c in vector_columns.split(",") if c.strip()]
             
-        num_str = str(num_val).strip()
-        text_str = str(text_val).strip()
-        
-        if num_str.endswith(".0"):
-            num_str = num_str[:-2]
+        for v_col in vector_cols:
+            if v_col not in df.columns:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Vector column '{v_col}' not found in the uploaded file."
+                )
+                
+        # Validate ID column for null or empty values
+        null_count = int(df[id_column].isna().sum())
+        if null_count > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Validation Error: Unique ID column '{id_column}' contains {null_count} null or empty values."
+            )
             
-        if not num_str or not text_str:
-            continue
+        # Validate ID column for duplicates
+        id_series = df[id_column].astype(str).str.strip()
+        duplicates = id_series[id_series.duplicated(keep=False)].unique()
+        if len(duplicates) > 0:
+            duplicate_example = ", ".join(list(duplicates[:5]))
+            if len(duplicates) > 5:
+                duplicate_example += ", ..."
+            raise HTTPException(
+                status_code=400,
+                detail=f"Validation Error: Unique ID column '{id_column}' contains duplicate values: {duplicate_example}"
+            )
             
-        parsed_records.append({
-            "number": num_str,
-            "text": text_str
-        })
+        # Combine columns and populate records
+        for idx, row in df.iterrows():
+            if pd.isna(row[id_column]):
+                continue
+            vid = str(row[id_column]).strip()
+            if vid.endswith(".0"):
+                vid = vid[:-2]
+            if not vid:
+                continue
+                
+            text_parts = []
+            for col in vector_cols:
+                val = row[col]
+                if not pd.isna(val) and str(val).strip() != "":
+                    text_parts.append(str(val).strip())
+            combined_text = " ".join(text_parts)
+            
+            # Setup metadata containing all row properties
+            row_metadata = {
+                "source": f"AI Generation Mode ({filename})",
+                "timestamp": "2026-07-11T20:33:41Z"
+            }
+            for col in df.columns:
+                val = row[col]
+                if pd.isna(val):
+                    row_metadata[str(col)] = None
+                else:
+                    if isinstance(val, (int, float, str, bool)):
+                        row_metadata[str(col)] = val
+                    else:
+                        row_metadata[str(col)] = str(val)
+            
+            # For backwards-compatibility/dynamic UI mapping, also expose standard keys
+            row_metadata["original_number"] = vid
+            row_metadata["original_text"] = combined_text
+            if "severity" not in row_metadata:
+                row_metadata["severity"] = "Medium"
+                
+            parsed_records.append({
+                "id": vid,
+                "text": combined_text,
+                "metadata": row_metadata
+            })
+            
+    # Legacy fallback flow
+    else:
+        number_col = None
+        text_col = None
         
+        for col in df.columns:
+            col_lower = str(col).strip().lower()
+            if col_lower in ["number", "no.", "no", "id", "num"]:
+                number_col = col
+            if col_lower in ["text", "content", "document", "text 1", "text_1"]:
+                text_col = col
+                
+        if not number_col and len(df.columns) > 0:
+            number_col = df.columns[0]
+        if not text_col and len(df.columns) > 1:
+            text_col = df.columns[1]
+            
+        if not number_col or not text_col:
+            raise HTTPException(
+                status_code=400,
+                detail="File must contain columns matching 'Number' and 'Text' (or at least two columns)."
+            )
+            
+        for idx, row in df.iterrows():
+            num_val = row[number_col]
+            text_val = row[text_col]
+            
+            if pd.isna(num_val) or pd.isna(text_val):
+                continue
+                
+            num_str = str(num_val).strip()
+            text_str = str(text_val).strip()
+            
+            if num_str.endswith(".0"):
+                num_str = num_str[:-2]
+                
+            if not num_str or not text_str:
+                continue
+                
+            row_metadata = {
+                "source": f"AI Generation Mode ({filename})",
+                "original_number": num_str,
+                "original_text": text_str,
+                "severity": "Medium",
+                "timestamp": "2026-07-02T20:58:00Z"
+            }
+            # Put other columns into metadata too
+            for col in df.columns:
+                val = row[col]
+                if pd.isna(val):
+                    row_metadata[str(col)] = None
+                else:
+                    if isinstance(val, (int, float, str, bool)):
+                        row_metadata[str(col)] = val
+                    else:
+                        row_metadata[str(col)] = str(val)
+                        
+            parsed_records.append({
+                "id": num_str,
+                "text": text_str,
+                "metadata": row_metadata
+            })
+            
     if not parsed_records:
         raise HTTPException(
             status_code=400,
-            detail="No valid rows containing both 'Number' and 'Text' values were found."
+            detail="No valid rows containing values were found."
         )
         
     provider = provider.lower()
     warning_msg = None
     
-    # Enforce Gemini limit
     if provider == "gemini" and len(parsed_records) > 100:
         parsed_records = parsed_records[:100]
         warning_msg = "Warning: Platform limit active. Only the first 100 records were processed to stay within Gemini Free Tier limits."
@@ -705,26 +828,17 @@ async def generate_embeddings_file(
         
     duration = time.time() - t0
     
-    # Ingest as new VectorInputs
     new_vectors = []
     for idx, record in enumerate(parsed_records):
-        vid = record["number"]
+        vid = record["id"]
         doc = record["text"]
         label = doc[:30] + "..." if len(doc) > 30 else doc
-        
-        metadata = {
-            "source": f"AI Generation Mode ({filename})",
-            "original_number": record["number"],
-            "original_text": doc,
-            "severity": "Medium",
-            "timestamp": "2026-07-02T20:58:00Z"
-        }
         
         new_vectors.append(VectorInput(
             id=vid,
             label=label,
             embedding=embeddings[idx],
-            metadata=metadata
+            metadata=record["metadata"]
         ))
         
     summary = store.add_vectors(new_vectors)

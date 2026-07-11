@@ -91,6 +91,13 @@ export const api = {
     return response.data;
   },
 
+  parseHeaders: async (formData) => {
+    const response = await client.post("/parse-headers", formData, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
+    return response.data;
+  },
+
   downloadEmbeddingsCsv: async () => {
     const response = await client.get("/download-embeddings-csv", {
       responseType: "blob"
