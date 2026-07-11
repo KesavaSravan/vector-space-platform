@@ -16,6 +16,7 @@ class ReductionRequest(BaseModel):
     perplexity: float = 30.0
     n_neighbors: int = 15
     min_dist: float = 0.1
+    incremental: bool = False
 
 class ClusteringRequest(BaseModel):
     method: str = "kmeans"  # "kmeans", "dbscan"
@@ -79,3 +80,29 @@ class StatisticsResponse(BaseModel):
     outliers_count: int
     cluster_distribution: Dict[str, int]
     severity_distribution: Dict[str, int]
+    embedding_provider: Optional[str] = None
+    embedding_model: Optional[str] = None
+
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    chat_history: List[ChatMessage] = []
+    provider: str = "gemini"  # "gemini" or "groq"
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    embedding_api_key: Optional[str] = None
+    use_rag: bool = False
+    top_k: int = 5
+
+class ChatResponse(BaseModel):
+    answer: str
+    context_nodes: List[Dict[str, Any]] = []
+    ui_actions: List[Dict[str, Any]] = []
+
+class BulkUpdateRequest(BaseModel):
+    ids: List[str]
+    fields: Dict[str, Any]
+

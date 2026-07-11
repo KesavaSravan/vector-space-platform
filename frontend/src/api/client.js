@@ -2,12 +2,16 @@ import axios from "axios";
 
 // If the environment variable VITE_API_URL is provided, use it (with fallback to "/api" proxy
 // if it references the docker-internal hostname or localhost).
-// If VITE_API_URL is not set, fallback to "/api" in development mode (Vite proxy)
-// and GCP production URL in production mode.
+// If VITE_API_URL is not set, fallback to "/api" if running locally on localhost/127.0.0.1
+// and the GCP production URL otherwise.
 const envUrl = import.meta.env.VITE_API_URL;
-const baseURL = envUrl
-  ? ((envUrl.includes("//backend:") || envUrl === "http://localhost:8000") ? "/api" : envUrl)
-  : (import.meta.env.DEV ? "/api" : "https://backend-570296158927.asia-south1.run.app");
+let baseURL = "/api";
+
+if (envUrl) {
+  baseURL = (envUrl.includes("//backend:") || envUrl === "http://localhost:8000") ? "/api" : envUrl;
+} else if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+  baseURL = "https://backend-570296158927.asia-south1.run.app";
+}
 
 const client = axios.create({
   baseURL
@@ -105,6 +109,17 @@ export const api = {
     const response = await client.get("/download-embeddings-csv", {
       responseType: "blob"
     });
+    return response.data;
+  },
+
+  postChat: async (params) => {
+    // params: { message, chat_history, provider, model, api_key, use_rag, top_k }
+    const response = await client.post("/chat", params);
+    return response.data;
+  },
+
+  bulkUpdateVectors: async (ids, fields) => {
+    const response = await client.post("/vectors/bulk-update", { ids, fields });
     return response.data;
   }
 };

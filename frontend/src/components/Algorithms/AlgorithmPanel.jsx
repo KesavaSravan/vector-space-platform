@@ -9,7 +9,12 @@ import {
   FormControl,
   FormLabel,
   Divider,
-  Grid
+  Grid,
+  Select,
+  MenuItem,
+  FormControlLabel,
+  Checkbox,
+  InputLabel
 } from "@mui/material";
 import {
   Settings as SettingsIcon,
@@ -46,10 +51,8 @@ export default function AlgorithmPanel() {
     }
   };
 
-  const handleColorByChange = (e, val) => {
-    if (val !== null && state.mode !== "alert") {
-      updateAlgo({ colorBy: val });
-    }
+  const handleColorByChange = (e) => {
+    updateAlgo({ colorBy: e.target.value });
   };
 
   const handleRunReduction = () => {
@@ -192,21 +195,50 @@ export default function AlgorithmPanel() {
         </ToggleButtonGroup>
 
         {state.algo.clusterMethod === "kmeans" && (
-          <Box sx={{ px: 1, mt: 1 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-              <Typography variant="caption" sx={{ color: tokens.textSecondary }}>Number of clusters (K)</Typography>
-              <Typography variant="caption" className="font-mono" sx={{ color: tokens.signal }}>
-                {state.algo.nClusters}
-              </Typography>
-            </Box>
-            <Slider
-              value={state.algo.nClusters}
-              min={2}
-              max={15}
-              step={1}
-              onChange={(e, val) => updateAlgo({ nClusters: val })}
-              size="small"
+          <Box sx={{ px: 1, mt: 1, display: "flex", flexDirection: "column", gap: 0.5 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={state.algo.nClusters <= 0}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      updateAlgo({ nClusters: -1 });
+                    } else {
+                      updateAlgo({ nClusters: 5 });
+                    }
+                  }}
+                  size="small"
+                  sx={{ color: tokens.border, "&.Mui-checked": { color: tokens.signal } }}
+                />
+              }
+              label={
+                <Typography variant="body2" sx={{ color: tokens.textSecondary }}>
+                  Auto-detect optimal clusters (Silhouette)
+                </Typography>
+              }
             />
+            {state.algo.nClusters > 0 ? (
+              <>
+                <Box sx={{ display: "flex", justifyContent: "space-between", mt: 1 }}>
+                  <Typography variant="caption" sx={{ color: tokens.textSecondary }}>Number of clusters (K)</Typography>
+                  <Typography variant="caption" className="font-mono" sx={{ color: tokens.signal }}>
+                    {state.algo.nClusters}
+                  </Typography>
+                </Box>
+                <Slider
+                  value={state.algo.nClusters}
+                  min={2}
+                  max={15}
+                  step={1}
+                  onChange={(e, val) => updateAlgo({ nClusters: val })}
+                  size="small"
+                />
+              </>
+            ) : (
+              <Typography variant="caption" sx={{ color: tokens.textMuted, fontStyle: "italic", pl: 1 }}>
+                * Silhouette coefficient search (K = 2 to 10) will run automatically.
+              </Typography>
+            )}
           </Box>
         )}
 
@@ -263,32 +295,80 @@ export default function AlgorithmPanel() {
       <Divider />
 
       {/* 3. Rendering / Design Settings */}
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
         <Typography variant="caption" sx={{ color: tokens.textSecondary, fontWeight: 600 }}>
           3D VIEW SETTINGS
         </Typography>
 
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-          <Typography variant="caption" sx={{ color: tokens.textMuted }}>
-            Color Mapping Mode
-          </Typography>
-          <ToggleButtonGroup
+        {/* Color Mapping Selector */}
+        <FormControl size="small" fullWidth>
+          <InputLabel id="color-by-select-label">Color Mapping Mode</InputLabel>
+          <Select
+            labelId="color-by-select-label"
             value={state.algo.colorBy}
-            exclusive
+            label="Color Mapping Mode"
             onChange={handleColorByChange}
-            disabled={state.mode === "alert"}
-            size="small"
-            fullWidth
+            sx={{
+              "& .MuiSelect-select": {
+                py: 1,
+                fontSize: "0.85rem"
+              }
+            }}
           >
-            <ToggleButton value="cluster">Cluster Colors</ToggleButton>
-            <ToggleButton value="severity">Severity Alerts</ToggleButton>
-          </ToggleButtonGroup>
-          {state.mode === "alert" && (
-            <Typography variant="caption" sx={{ color: tokens.signal, fontStyle: "italic", fontSize: "0.7rem", mt: 0.5 }}>
-              * Severity coloring locked in Alert Intel mode.
-            </Typography>
-          )}
-        </Box>
+            <MenuItem value="cluster">Cluster Colors</MenuItem>
+            <MenuItem value="severity">Severity Alerts</MenuItem>
+            {/* Extract and render unique metadata keys dynamically */}
+            {(() => {
+              const keys = new Set();
+              state.points.forEach((p) => {
+                if (p.metadata) {
+                  Object.keys(p.metadata).forEach((k) => {
+                    if (
+                      k !== "original_text" &&
+                      k !== "text_snippet" &&
+                      k !== "original_number" &&
+                      k !== "severity"
+                    ) {
+                      keys.add(k);
+                    }
+                  });
+                }
+              });
+              return Array.from(keys).sort().map((k) => (
+                <MenuItem key={k} value={`metadata:${k}`}>
+                  Metadata: {k}
+                </MenuItem>
+              ));
+            })()}
+          </Select>
+        </FormControl>
+
+        {/* Point Style Selector (LOD override) */}
+        <FormControl size="small" fullWidth>
+          <InputLabel id="point-style-select-label">Point Render Style</InputLabel>
+          <Select
+            labelId="point-style-select-label"
+            value={state.pointStyle || "auto"}
+            label="Point Render Style"
+            onChange={(e) => {
+              const { setPointStyle } = useAppActions();
+              // Wait, since we are inside functional component we can invoke action creator direct
+              dispatch({ type: "SET_POINT_STYLE", payload: e.target.value });
+            }}
+            sx={{
+              "& .MuiSelect-select": {
+                py: 1,
+                fontSize: "0.85rem"
+              }
+            }}
+          >
+            <MenuItem value="auto">Auto-Select (LOD performance)</MenuItem>
+            <MenuItem value="spheres">High-Poly Spheres (Quality)</MenuItem>
+            <MenuItem value="lowpoly">Low-Poly Spheres</MenuItem>
+            <MenuItem value="cubes">Cubes (Fast)</MenuItem>
+            <MenuItem value="points">Point Cloud (Fastest)</MenuItem>
+          </Select>
+        </FormControl>
       </Box>
     </Box>
   );

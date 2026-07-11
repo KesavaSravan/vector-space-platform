@@ -91,6 +91,24 @@ function Layout() {
         {/* Left Control Sidebar */}
         <Sidebar />
 
+        {/* Dockable Workspace Guide (Landing Page) */}
+        {state.dockLanding && (
+          <Box
+            sx={{
+              width: 380,
+              height: "100%",
+              borderRight: `1px solid ${tokens.border}`,
+              backgroundColor: tokens.surface,
+              flexShrink: 0,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden"
+            }}
+          >
+            <LandingPage isDocked={true} />
+          </Box>
+        )}
+
         {/* Center 3D viewport canvas */}
         <Box sx={{ flex: 1, height: "100%", position: "relative", overflow: "hidden" }}>
           <Scene />

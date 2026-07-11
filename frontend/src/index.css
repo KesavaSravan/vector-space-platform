@@ -10,7 +10,6 @@ body,
   color: #E7E9F0;
   font-family: 'Inter', sans-serif;
   overflow: hidden;
-  user-select: none;
 }
 
 /* Custom scrollbars for dark mode panels */
