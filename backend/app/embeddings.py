@@ -119,11 +119,19 @@ def run_startup_embedding_check() -> None:
             except Exception as fe:
                 logger.error(f"Embedding Startup Diagnostic FAILED (Diagnostic Fallback): {str(fe)}")
 
-def get_gemini_client() -> Optional[object]:
+def get_gemini_client(api_key: Optional[str] = None) -> Optional[object]:
     """
     Lazy-loads and caches the Google GenAI client instance.
     """
     global _gemini_client
+    if api_key:
+        try:
+            from google import genai
+            return genai.Client(api_key=api_key)
+        except ImportError:
+            logger.error("Failed to import 'google-genai'. Please make sure it is installed.")
+            return None
+
     if _gemini_client is None:
         gemini_key = os.getenv("GEMINI_API_KEY")
         if not gemini_key:
@@ -157,6 +165,7 @@ def get_local_model() -> object:
 def get_gemini_embeddings(
     documents: List[str],
     model_name: str = "gemini-embedding-001",
+    api_key: Optional[str] = None,
     batch_size: int = 100
 ) -> List[List[float]]:
     """
@@ -167,14 +176,14 @@ def get_gemini_embeddings(
         return []
 
     validate_env()
-    gemini_key = os.getenv("GEMINI_API_KEY")
+    gemini_key = api_key or os.getenv("GEMINI_API_KEY")
     if not gemini_key:
         raise HTTPException(
             status_code=400,
-            detail="GEMINI_API_KEY environment variable is not set. Please configure it to use Gemini embeddings."
+            detail="GEMINI_API_KEY environment variable or input key is not set. Please configure it to use Gemini embeddings."
         )
 
-    client = get_gemini_client()
+    client = get_gemini_client(api_key=gemini_key)
     if not client:
         raise HTTPException(
             status_code=500,
@@ -452,17 +461,8 @@ def generate_embeddings(
     
     if provider == "gemini":
         model_name = model or "gemini-embedding-001"
-        try:
-            embeddings = get_gemini_embeddings(documents, model_name, batch_size)
-            return embeddings, model_name
-        except Exception as e:
-            logger.warning(
-                f"Gemini embedding generation failed after retries: {str(e)}. "
-                "Falling back to local sentence-transformers/all-MiniLM-L6-v2..."
-            )
-            logger.info("Embedding Fallback: Using local Sentence Transformers model 'all-MiniLM-L6-v2' instead.")
-            embeddings = get_sentence_transformer_embeddings(documents, "all-MiniLM-L6-v2", api_key, batch_size)
-            return embeddings, "all-MiniLM-L6-v2"
+        embeddings = get_gemini_embeddings(documents, model_name, api_key, batch_size)
+        return embeddings, model_name
             
     elif provider == "sentence-transformers":
         model_name = model or "all-MiniLM-L6-v2"
