@@ -2,7 +2,7 @@ import React from "react";
 import { Box, Typography, Button } from "@mui/material";
 import { Gesture as LassoIcon } from "@mui/icons-material";
 import { useAppState, useAppActions } from "../../context/AppContext";
-import { CLUSTER_COLORS, SEVERITY_COLORS, tokens } from "../../theme";
+import { CLUSTER_COLORS, tokens } from "../../theme";
 
 export default function ViewportHUD() {
   const state = useAppState();
@@ -110,26 +110,12 @@ export default function ViewportHUD() {
           }}
         >
           <Typography variant="caption" sx={{ color: tokens.textPrimary, fontWeight: 600 }}>
-            {colorBy === "severity"
-              ? "Severity Legends"
-              : colorBy.startsWith("metadata:")
+            {colorBy.startsWith("metadata:")
               ? `Legend: ${colorBy.substring(9)}`
               : "Clusters Legend"}
           </Typography>
 
-          {colorBy === "severity" ? (
-            // Severity Legend
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-              {Object.entries(SEVERITY_COLORS).map(([key, col]) => (
-                <Box key={key} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  <Box sx={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: col }} />
-                  <Typography variant="caption" sx={{ color: tokens.textSecondary, fontSize: "0.72rem" }}>
-                    {key}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-          ) : colorBy.startsWith("metadata:") ? (
+          {colorBy.startsWith("metadata:") ? (
             // Metadata Legend
             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
               {metadataLegendItems.slice(0, 5).map((item) => (

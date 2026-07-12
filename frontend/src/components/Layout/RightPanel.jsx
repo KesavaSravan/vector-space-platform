@@ -24,12 +24,7 @@ export default function RightPanel() {
     setTabValue(newValue);
   };
 
-  // If we change modes and Timeline tab was active, fallback to Details (0)
-  useEffect(() => {
-    if (state.mode !== "alert" && tabValue === 4) {
-      setTabValue(0);
-    }
-  }, [state.mode, tabValue]);
+
 
   // If a point is selected, we might want to auto-focus on either Details or Similarity tab. Let's keep it manual or adapt.
   useEffect(() => {
