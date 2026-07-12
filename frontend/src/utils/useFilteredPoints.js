@@ -7,7 +7,6 @@ export function useFilteredPoints(points, filters, similarity) {
     const {
       search,
       clusterFilter,
-      severityFilter,
       metadataKey,
       metadataValue,
       similarityThreshold
@@ -39,14 +38,6 @@ export function useFilteredPoints(points, filters, similarity) {
       // 2. Cluster Filter
       if (clusterFilter !== "" && clusterFilter !== undefined) {
         if (p.cluster.toString() !== clusterFilter.toString()) {
-          return false;
-        }
-      }
-
-      // 3. Severity Filter
-      if (severityFilter) {
-        const sev = p.metadata?.severity || p.severity || "Low";
-        if (sev.toLowerCase() !== severityFilter.toLowerCase()) {
           return false;
         }
       }

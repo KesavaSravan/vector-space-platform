@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { useAppState, useAppActions } from "../../context/AppContext";
 import { computeSceneTransform, normalizeCoords } from "../../utils/normalizeCoords";
 import { useFilteredPoints } from "../../utils/useFilteredPoints";
-import { CLUSTER_COLORS, SEVERITY_COLORS, tokens } from "../../theme";
+import { CLUSTER_COLORS, tokens } from "../../theme";
 
 export default function PointCloud() {
   const state = useAppState();
@@ -101,9 +101,6 @@ export default function PointCloud() {
         hexColor = "#FF9500"; // Orange highlight for RAG references
       } else if (neighborScores[p.id] !== undefined) {
         hexColor = "#54FFF0"; // Soft cyan for neighbors
-      } else if (state.algo.colorBy === "severity") {
-        const sev = p.metadata?.severity || p.severity || "Low";
-        hexColor = SEVERITY_COLORS[sev] || SEVERITY_COLORS.Low;
       } else if (state.algo.colorBy.startsWith("metadata:")) {
         const key = state.algo.colorBy.substring(9);
         const val = p.metadata?.[key];
@@ -160,9 +157,6 @@ export default function PointCloud() {
         hexColor = "#FF9500";
       } else if (neighborScores[p.id] !== undefined) {
         hexColor = "#54FFF0";
-      } else if (state.algo.colorBy === "severity") {
-        const sev = p.metadata?.severity || p.severity || "Low";
-        hexColor = SEVERITY_COLORS[sev] || SEVERITY_COLORS.Low;
       } else if (state.algo.colorBy.startsWith("metadata:")) {
         const key = state.algo.colorBy.substring(9);
         const val = p.metadata?.[key];

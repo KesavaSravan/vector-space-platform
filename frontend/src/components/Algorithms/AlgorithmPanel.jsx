@@ -316,7 +316,6 @@ export default function AlgorithmPanel() {
             }}
           >
             <MenuItem value="cluster">Cluster Colors</MenuItem>
-            <MenuItem value="severity">Severity Alerts</MenuItem>
             {/* Extract and render unique metadata keys dynamically */}
             {(() => {
               const keys = new Set();
@@ -326,8 +325,7 @@ export default function AlgorithmPanel() {
                     if (
                       k !== "original_text" &&
                       k !== "text_snippet" &&
-                      k !== "original_number" &&
-                      k !== "severity"
+                      k !== "original_number"
                     ) {
                       keys.add(k);
                     }

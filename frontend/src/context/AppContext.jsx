@@ -7,7 +7,6 @@ const AppDispatchContext = createContext(null);
 
 const initialState = {
   view: "landing", // "landing" | "app"
-  mode: "general", // "general" | "alert"
   points: [], // Array of { id, label, coords: [x,y,z], cluster, severity, metadata }
   dimension: null,
   totalVectors: 0,
@@ -17,7 +16,6 @@ const initialState = {
   filters: {
     search: "",
     clusterFilter: "", // "" means all, or string index
-    severityFilter: "", // "" means all, or Critical, High, etc.
     metadataKey: "",
     metadataValue: "",
     similarityThreshold: 0 // 0 to 100
@@ -73,16 +71,6 @@ function appReducer(state, action) {
       return {
         ...state,
         dockLanding: !state.dockLanding
-      };
-    case "SET_MODE":
-      return {
-        ...state,
-        mode: action.payload,
-        // Alert mode forces colorBy to severity
-        algo: {
-          ...state.algo,
-          colorBy: action.payload === "alert" ? "severity" : state.algo.colorBy
-        }
       };
     case "START_LOADING":
       return {
@@ -226,10 +214,7 @@ function appReducer(state, action) {
     case "CLEAR_CHAT":
       return { ...state, chatMessages: [], chatReferences: [] };
     case "CLEAR_ALL":
-      return {
-        ...initialState,
-        mode: state.mode // preserve general/alert mode selection
-      };
+      return initialState;
     default:
       return state;
   }
@@ -470,10 +455,6 @@ export function useAppActions() {
     dispatch({ type: "SET_HOVERED", payload: id });
   };
 
-  const setMode = (mode) => {
-    dispatch({ type: "SET_MODE", payload: mode });
-  };
-
   const updateChatSettings = (settings) => {
     dispatch({ type: "UPDATE_CHAT_SETTINGS", payload: settings });
   };
@@ -548,7 +529,6 @@ export function useAppActions() {
               payload: {
                 search: "",
                 clusterFilter: "",
-                severityFilter: "",
                 metadataKey: "",
                 metadataValue: "",
                 similarityThreshold: 0
@@ -637,7 +617,6 @@ export function useAppActions() {
     updateFilters,
     updateAlgo,
     setHovered,
-    setMode,
     setView,
     toggleDockLanding,
     setError,

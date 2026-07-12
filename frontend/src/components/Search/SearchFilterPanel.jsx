@@ -50,7 +50,6 @@ export default function SearchFilterPanel() {
     updateFilters({
       search: "",
       clusterFilter: "",
-      severityFilter: "",
       metadataKey: "",
       metadataValue: "",
       similarityThreshold: 0
@@ -120,21 +119,7 @@ export default function SearchFilterPanel() {
         </Select>
       </FormControl>
 
-      {/* Severity Selector */}
-      <FormControl size="small" fullWidth>
-        <InputLabel>Filter by Severity</InputLabel>
-        <Select
-          value={state.filters.severityFilter}
-          label="Filter by Severity"
-          onChange={handleSelectChange("severityFilter")}
-        >
-          <MenuItem value="">All Severities</MenuItem>
-          <MenuItem value="Critical">Critical (Red)</MenuItem>
-          <MenuItem value="High">High (Orange)</MenuItem>
-          <MenuItem value="Medium">Medium (Yellow)</MenuItem>
-          <MenuItem value="Low">Low (Green)</MenuItem>
-        </Select>
-      </FormControl>
+
 
       {/* Similarity Threshold Slider (Active only if point selected) */}
       <Box sx={{ px: 0.5, py: 0.5, border: `1px solid ${tokens.border}`, borderRadius: 2, backgroundColor: `${tokens.bg}40` }}>
