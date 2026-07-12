@@ -365,7 +365,7 @@ export default function UploadPanel() {
             />
 
             {/* API Key */}
-            {provider !== "sentence-transformers" && provider !== "gemini" && (
+            {provider !== "sentence-transformers" && (
               <TextField
                 label="API Key"
                 value={apiKey}
