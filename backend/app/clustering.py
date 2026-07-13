@@ -38,7 +38,7 @@ def run_clustering(
                 from sklearn.metrics import silhouette_score
                 best_k = 2
                 best_score = -1.0
-                max_k = min(10, n_samples - 1)
+                max_k = min(15, n_samples - 1)
                 
                 # Subsample if dataset is too large
                 if n_samples > 1000:

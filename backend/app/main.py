@@ -27,11 +27,12 @@ from app.models import (
     VectorInput,
     ChatRequest,
     ChatResponse,
-    BulkUpdateRequest
+    BulkUpdateRequest,
+    ReductionResponse
 )
 from app.store import store
 from app.ingest import parse_json_data, parse_csv_data
-from app.reduction import reduce_dimensions
+from app.reduction import reduce_dimensions, calculate_visualization_quality
 from app.clustering import run_clustering
 from app.similarity import find_similar_vectors
 from app.embeddings import generate_embeddings, validate_env
@@ -228,7 +229,7 @@ def get_vector_details(vector_id: str):
         )
     return vector
 
-@app.post("/reduce-dimensions", response_model=List[PointResponse])
+@app.post("/reduce-dimensions", response_model=ReductionResponse)
 def reduce_vectors_dimensions(request: ReductionRequest):
     """
     Applies StandardScaling + Dimensionality reduction (PCA/t-SNE/UMAP).
@@ -274,6 +275,14 @@ def reduce_vectors_dimensions(request: ReductionRequest):
         store.reducer_method = request.method.lower()
         store.reducer_n_components = request.n_components
 
+        # Calculate visualization quality
+        quality_data = calculate_visualization_quality(
+            original_embeddings=embeddings,
+            reduced_coords=reduced_coords,
+            method=request.method,
+            reducer_model=reducer_out
+        )
+
         # Save to store and map coordinates
         coords_mapping = {}
         response_data = []
@@ -292,7 +301,10 @@ def reduce_vectors_dimensions(request: ReductionRequest):
             ))
             
         store.update_coords(coords_mapping)
-        return response_data
+        return ReductionResponse(
+            points=response_data,
+            quality=quality_data
+        )
     except HTTPException as he:
         raise he
     except Exception as e:

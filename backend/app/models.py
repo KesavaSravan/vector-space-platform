@@ -56,6 +56,19 @@ class PointResponse(BaseModel):
     severity: str
     metadata: Dict[str, Any]
 
+class ReductionQualityResponse(BaseModel):
+    method: str
+    explained_variance: Optional[float] = None
+    neighbor_preservation: float
+    distance_correlation: float
+    trustworthiness: float
+    quality_score: float
+    quality: str
+
+class ReductionResponse(BaseModel):
+    points: List[PointResponse]
+    quality: ReductionQualityResponse
+
 class SimilarityMatch(BaseModel):
     id: str
     label: str
