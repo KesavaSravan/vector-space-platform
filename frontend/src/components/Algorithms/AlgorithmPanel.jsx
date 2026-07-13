@@ -236,7 +236,7 @@ export default function AlgorithmPanel() {
               </>
             ) : (
               <Typography variant="caption" sx={{ color: tokens.textMuted, fontStyle: "italic", pl: 1 }}>
-                * Silhouette coefficient search (K = 2 to 10) will run automatically.
+                * Silhouette coefficient search (K = 2 to 15) will run automatically.
               </Typography>
             )}
           </Box>

@@ -8,6 +8,7 @@ const AppDispatchContext = createContext(null);
 const initialState = {
   view: "landing", // "landing" | "app"
   points: [], // Array of { id, label, coords: [x,y,z], cluster, severity, metadata }
+  visualizationQuality: null,
   dimension: null,
   totalVectors: 0,
   selectedId: null,
@@ -24,7 +25,7 @@ const initialState = {
     reductionMethod: "pca", // "pca" | "tsne" | "umap"
     nComponents: 3, // 2 | 3
     clusterMethod: "kmeans", // "kmeans" | "dbscan"
-    nClusters: 5,
+    nClusters: -1,
     eps: 0.5,
     minSamples: 5,
     colorBy: "cluster", // "cluster" | "severity"
@@ -117,7 +118,8 @@ function appReducer(state, action) {
     case "REDUCTION_SUCCESS":
       return {
         ...state,
-        points: action.payload,
+        points: action.payload.points,
+        visualizationQuality: action.payload.quality,
         selectedId: null,
         selectedIds: [],
         hoveredId: null,
