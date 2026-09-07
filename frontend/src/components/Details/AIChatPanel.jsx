@@ -359,7 +359,9 @@ export default function AIChatPanel() {
     clearChat, 
     updateChatSettings, 
     selectVector, 
-    setNotice 
+    setNotice,
+    setRagMode,
+    highlightGraphPath
   } = useAppActions();
 
   const { chatMessages, chatLoading, chatSettings } = state;
@@ -604,17 +606,52 @@ export default function AIChatPanel() {
             }
             label={
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                Enable RAG (Search ServiceNow Tickets)
+                Enable RAG Context Search
               </Typography>
             }
             sx={{ m: 0 }}
           />
 
+          {/* RAG Mode Selector */}
+          {chatSettings.useRag && (
+            <Box sx={{ mt: 0.5 }}>
+              <Typography variant="caption" sx={{ color: tokens.textSecondary, display: "block", mb: 0.5 }}>
+                RAG Engine Strategy:
+              </Typography>
+              <Box sx={{ display: "flex", gap: 0.5 }}>
+                {[
+                  { id: "hybrid", label: "Hybrid Graph" },
+                  { id: "vector", label: "Vector Only" },
+                  { id: "community", label: "Global Summary" }
+                ].map((modeItem) => (
+                  <Button
+                    key={modeItem.id}
+                    size="small"
+                    variant={(state.ragMode || "hybrid") === modeItem.id ? "contained" : "outlined"}
+                    onClick={() => setRagMode(modeItem.id)}
+                    sx={{
+                      flex: 1,
+                      py: 0.25,
+                      fontSize: "0.68rem",
+                      fontWeight: 700,
+                      textTransform: "none",
+                      backgroundColor: (state.ragMode || "hybrid") === modeItem.id ? tokens.accent : "transparent",
+                      color: (state.ragMode || "hybrid") === modeItem.id ? "#000" : tokens.textSecondary,
+                      borderColor: tokens.border
+                    }}
+                  >
+                    {modeItem.label}
+                  </Button>
+                ))}
+              </Box>
+            </Box>
+          )}
+
           {/* RAG Top K Slider */}
           {chatSettings.useRag && (
-            <Box sx={{ px: 1, mt: -0.5 }}>
+            <Box sx={{ px: 1, mt: 0.5 }}>
               <Typography variant="caption" sx={{ color: tokens.textSecondary, display: "block", mb: 0.5 }}>
-                Context Limit: top {chatSettings.topK} similar tickets
+                Context Limit: top {chatSettings.topK} similar records
               </Typography>
               <Slider
                 value={chatSettings.topK}
@@ -757,6 +794,43 @@ export default function AIChatPanel() {
                             }}
                           />
                         ))}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* Multi-Hop Graph Traversal Paths */}
+                  {!isUser && msg.graph_paths && msg.graph_paths.length > 0 && (
+                    <Box sx={{ mt: 1, borderTop: `1px dashed ${tokens.border}`, pt: 0.75 }}>
+                      <Typography variant="caption" sx={{ color: "#22c55e", fontWeight: 700, display: "block", mb: 0.5, fontSize: "0.68rem" }}>
+                        Multi-Hop Relational Traversal Paths:
+                      </Typography>
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                        {msg.graph_paths.map((p, pIdx) => {
+                          const stepsText = p.steps ? p.steps.map(s => `${s.source} -> [${s.relation}] -> ${s.target}`).join("  |  ") : `${p.source} -> ${p.target}`;
+                          return (
+                            <Chip
+                              key={`path-${pIdx}`}
+                              label={`Hop ${pIdx + 1}: ${stepsText}`}
+                              size="small"
+                              onClick={() => highlightGraphPath([p])}
+                              sx={{
+                                height: "auto",
+                                py: 0.25,
+                                fontSize: "0.65rem",
+                                fontWeight: 600,
+                                fontFamily: tokens.fontMono,
+                                color: "#22c55e",
+                                backgroundColor: "rgba(34, 197, 94, 0.1)",
+                                border: "1px solid rgba(34, 197, 94, 0.3)",
+                                cursor: "pointer",
+                                "& .MuiChip-label": { whiteSpace: "normal" },
+                                "&:hover": {
+                                  backgroundColor: "rgba(34, 197, 94, 0.2)"
+                                }
+                              }}
+                            />
+                          );
+                        })}
                       </Box>
                     </Box>
                   )}

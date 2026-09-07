@@ -109,14 +109,35 @@ class ChatRequest(BaseModel):
     api_key: Optional[str] = None
     embedding_api_key: Optional[str] = None
     use_rag: bool = False
+    rag_mode: str = "hybrid"  # "hybrid", "vector", "graph", "community"
     top_k: int = 5
 
 class ChatResponse(BaseModel):
     answer: str
     context_nodes: List[Dict[str, Any]] = []
     ui_actions: List[Dict[str, Any]] = []
+    graph_paths: List[Dict[str, Any]] = []
+    graph_triples: List[str] = []
 
 class BulkUpdateRequest(BaseModel):
     ids: List[str]
     fields: Dict[str, Any]
+
+class BuildGraphRequest(BaseModel):
+    mode: str = "hybrid"  # "hybrid", "heuristic", "llm"
+    provider: str = "gemini"
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    max_llm_samples: int = 25
+
+class ExtractTriplesRequest(BaseModel):
+    text: str
+    provider: str = "gemini"
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+
+class SubgraphRequest(BaseModel):
+    seed_nodes: List[str] = []
+    hops: int = 1
+    max_nodes: int = 50
 

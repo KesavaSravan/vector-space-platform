@@ -58,7 +58,13 @@ const initialState = {
   },
   selectedIds: [],
   lassoMode: false,
-  pointStyle: "auto"
+  pointStyle: "auto",
+  graphData: null,
+  graphSummary: null,
+  graphLoading: false,
+  showGraphLines: true,
+  highlightedGraphPath: null,
+  ragMode: "hybrid"
 };
 
 // Reducer Actions
@@ -216,6 +222,18 @@ function appReducer(state, action) {
       return { ...state, chatSettings: { ...state.chatSettings, ...action.payload } };
     case "CLEAR_CHAT":
       return { ...state, chatMessages: [], chatReferences: [] };
+    case "SET_GRAPH_DATA":
+      return { ...state, graphData: action.payload };
+    case "SET_GRAPH_SUMMARY":
+      return { ...state, graphSummary: action.payload };
+    case "SET_GRAPH_LOADING":
+      return { ...state, graphLoading: action.payload };
+    case "TOGGLE_SHOW_GRAPH_LINES":
+      return { ...state, showGraphLines: !state.showGraphLines };
+    case "SET_HIGHLIGHTED_GRAPH_PATH":
+      return { ...state, highlightedGraphPath: action.payload };
+    case "SET_RAG_MODE":
+      return { ...state, ragMode: action.payload };
     case "CLEAR_ALL":
       return initialState;
     default:
@@ -500,6 +518,7 @@ export function useAppActions() {
         api_key: activeKey || undefined,
         embedding_api_key: state.chatSettings.embeddingApiKey || undefined,
         use_rag: state.chatSettings.useRag,
+        rag_mode: state.ragMode || "hybrid",
         top_k: state.chatSettings.topK
       });
 
@@ -507,7 +526,9 @@ export function useAppActions() {
         role: "assistant", 
         content: response.answer,
         context_nodes: response.context_nodes,
-        ui_actions: response.ui_actions 
+        ui_actions: response.ui_actions,
+        graph_paths: response.graph_paths || [],
+        graph_triples: response.graph_triples || []
       };
       
       dispatch({ type: "SEND_CHAT_MESSAGE", payload: assistantMsg });
@@ -517,6 +538,11 @@ export function useAppActions() {
         dispatch({ type: "SET_CHAT_REFERENCES", payload: ids });
       } else {
         dispatch({ type: "SET_CHAT_REFERENCES", payload: [] });
+      }
+
+      // Highlight graph paths on 3D scene if returned
+      if (response.graph_paths && response.graph_paths.length > 0) {
+        dispatch({ type: "SET_HIGHLIGHTED_GRAPH_PATH", payload: response.graph_paths });
       }
 
       // Execute AI UI control actions
@@ -551,6 +577,58 @@ export function useAppActions() {
     } finally {
       dispatch({ type: "SET_CHAT_LOADING", payload: false });
     }
+  };
+
+  const fetchGraphData = async () => {
+    dispatch({ type: "SET_GRAPH_LOADING", payload: true });
+    try {
+      const res = await api.getGraphData();
+      if (res && res.status === "ok") {
+        dispatch({ type: "SET_GRAPH_DATA", payload: res.data });
+        dispatch({ type: "SET_GRAPH_SUMMARY", payload: res.summary });
+      }
+    } catch (err) {
+      console.warn("fetchGraphData warning:", err);
+    } finally {
+      dispatch({ type: "SET_GRAPH_LOADING", payload: false });
+    }
+  };
+
+  const buildGraph = async (params = {}) => {
+    dispatch({ type: "SET_GRAPH_LOADING", payload: true });
+    try {
+      const activeKey = state.chatSettings.provider === "gemini" 
+        ? state.chatSettings.apiKey 
+        : state.chatSettings.groqKey;
+
+      const res = await api.buildGraph({
+        mode: params.mode || "hybrid",
+        provider: state.chatSettings.provider,
+        model: state.chatSettings.model,
+        api_key: activeKey || undefined,
+        max_llm_samples: params.max_llm_samples || 25
+      });
+      if (res && res.status === "ok") {
+        await fetchGraphData();
+        dispatch({ type: "SET_NOTICE", payload: "Knowledge Graph successfully extracted & constructed." });
+      }
+    } catch (err) {
+      setError(err);
+    } finally {
+      dispatch({ type: "SET_GRAPH_LOADING", payload: false });
+    }
+  };
+
+  const highlightGraphPath = (path) => {
+    dispatch({ type: "SET_HIGHLIGHTED_GRAPH_PATH", payload: path });
+  };
+
+  const setRagMode = (mode) => {
+    dispatch({ type: "SET_RAG_MODE", payload: mode });
+  };
+
+  const toggleShowGraphLines = () => {
+    dispatch({ type: "TOGGLE_SHOW_GRAPH_LINES" });
   };
 
   const setLassoMode = (active) => {
@@ -638,6 +716,11 @@ export function useAppActions() {
     setLassoMode,
     setSelectedIds,
     setPointStyle,
-    bulkUpdateVectors
+    bulkUpdateVectors,
+    fetchGraphData,
+    buildGraph,
+    highlightGraphPath,
+    setRagMode,
+    toggleShowGraphLines
   };
 }

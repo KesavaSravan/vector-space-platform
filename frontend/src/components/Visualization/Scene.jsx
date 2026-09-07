@@ -5,6 +5,7 @@ import { Box } from "@mui/material";
 import PointCloud from "./PointCloud";
 import ConnectionLines from "./ConnectionLines";
 import ChatConnectionLines from "./ChatConnectionLines";
+import GraphConnectionLines from "./GraphConnectionLines";
 import LassoOverlay from "./LassoOverlay";
 import AxesGrid from "./AxesGrid";
 import ViewportHUD from "./ViewportHUD";
@@ -77,6 +78,9 @@ export default function Scene() {
 
           {/* 3D lines linking RAG retrieved chat references */}
           <ChatConnectionLines />
+
+          {/* 3D lines representing Knowledge Graph relational edges & multi-hop paths */}
+          <GraphConnectionLines />
 
           {/* Lasso selection path SVG overlay */}
           <LassoOverlay />

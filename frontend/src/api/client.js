@@ -113,8 +113,37 @@ export const api = {
   },
 
   postChat: async (params) => {
-    // params: { message, chat_history, provider, model, api_key, use_rag, top_k }
+    // params: { message, chat_history, provider, model, api_key, embedding_api_key, use_rag, rag_mode, top_k }
     const response = await client.post("/chat", params);
+    return response.data;
+  },
+
+  // Knowledge Graph & Graph RAG
+  getGraphData: async () => {
+    const response = await client.get("/graph/data");
+    return response.data;
+  },
+
+  buildGraph: async (params = {}) => {
+    // params: { mode, provider, model, api_key, max_llm_samples }
+    const response = await client.post("/graph/build", params);
+    return response.data;
+  },
+
+  extractTriples: async (params) => {
+    // params: { text, provider, model, api_key }
+    const response = await client.post("/graph/extract-triples", params);
+    return response.data;
+  },
+
+  getSubgraph: async (params) => {
+    // params: { seed_nodes, hops, max_nodes }
+    const response = await client.post("/graph/subgraph", params);
+    return response.data;
+  },
+
+  getCommunitySummaries: async (params = {}) => {
+    const response = await client.post("/graph/communities", null, { params });
     return response.data;
   },
 
