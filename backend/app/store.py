@@ -17,7 +17,7 @@ except ImportError:
 
 class VectorStore:
     def __init__(self):
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.vectors: Dict[str, Dict[str, Any]] = {}
         self.coords: Dict[str, List[float]] = {}
         self.dimension: Optional[int] = None
@@ -139,6 +139,12 @@ class VectorStore:
                 except Exception as e:
                     logger.warning(f"VectorStore: Auto-clustering failed: {str(e)}")
 
+                try:
+                    from app.graph_rag import extract_heuristic_relations
+                    extract_heuristic_relations(list(self.vectors.values()))
+                except Exception as e:
+                    logger.warning(f"VectorStore: Auto-graph synchronization skipped: {str(e)}")
+
             return {
                 "accepted": accepted,
                 "rejected": rejected,
@@ -162,6 +168,11 @@ class VectorStore:
             self.reducer_n_components = None
             self.active_clustering_method = "kmeans"
             self.active_clustering_params = {"n_clusters": -1}
+            try:
+                from app.graph import graph_store
+                graph_store.clear()
+            except Exception:
+                pass
 
     def get_all_vectors(self) -> List[Dict[str, Any]]:
         with self.lock:

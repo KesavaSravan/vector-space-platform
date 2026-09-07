@@ -6,6 +6,7 @@ import {
   BarChart as AnalyticsIcon,
   Timeline as TimelineIcon,
   ChatOutlined as ChatIcon,
+  Hub as HubIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon
 } from "@mui/icons-material";
@@ -16,6 +17,7 @@ import SimilarityResults from "../Details/SimilarityResults";
 import AnalyticsDashboard from "../Analytics/AnalyticsDashboard";
 import AlertTimeline from "../Analytics/AlertTimeline";
 import AIChatPanel from "../Details/AIChatPanel";
+import GraphInspectorPanel from "../Details/GraphInspectorPanel";
 import { tokens } from "../../theme";
 
 export default function RightPanel() {
@@ -34,8 +36,8 @@ export default function RightPanel() {
   return (
     <Box
       sx={{
-        width: tabValue === 3 ? 480 : 380,
-        minWidth: tabValue === 3 ? 480 : 380,
+        width: [3, 4].includes(tabValue) ? 450 : 380,
+        minWidth: [3, 4].includes(tabValue) ? 450 : 380,
         height: "100%",
         borderLeft: `1px solid ${tokens.border}`,
         backgroundColor: tokens.surface,
@@ -81,7 +83,7 @@ export default function RightPanel() {
         <Tab icon={<SimilarityIcon sx={{ fontSize: 16 }} />} label="Matches" />
         <Tab icon={<AnalyticsIcon sx={{ fontSize: 16 }} />} label="Stats" />
         <Tab icon={<ChatIcon sx={{ fontSize: 16 }} />} label="Chat" />
-        {/* Removed alert timeline tab */}
+        <Tab icon={<HubIcon sx={{ fontSize: 16 }} />} label="Graph" />
       </Tabs>
 
       {/* Tab Panels */}
@@ -286,7 +288,11 @@ export default function RightPanel() {
             <AIChatPanel />
           </Box>
         )}
-        {/* Removed alert timeline panel */}
+        {tabValue === 4 && (
+          <Box sx={{ height: "100%", overflow: "hidden" }}>
+            <GraphInspectorPanel />
+          </Box>
+        )}
       </Box>
     </Box>
   );

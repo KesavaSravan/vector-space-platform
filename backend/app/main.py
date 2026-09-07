@@ -28,7 +28,10 @@ from app.models import (
     ChatRequest,
     ChatResponse,
     BulkUpdateRequest,
-    ReductionResponse
+    ReductionResponse,
+    BuildGraphRequest,
+    ExtractTriplesRequest,
+    SubgraphRequest
 )
 from app.store import store
 from app.ingest import parse_json_data, parse_csv_data
@@ -1112,12 +1115,12 @@ def download_embeddings_csv():
 @app.post("/chat", response_model=ChatResponse)
 def chat_endpoint(request: ChatRequest):
     """
-    Endpoint to interact with a conversational ServiceNow ITSM AI Copilot (Gemini or Groq openai/gpt-oss-120b)
-    augmented with context retrieved from the current vector space.
+    Interacts with AI Assistant (Gemini or Groq) augmented with Hybrid Graph RAG
+    (Vector Similarity + Knowledge Graph Subgraphs + Multi-Hop Reasoning + Community Summaries).
     """
     from app.chat import run_chat_query
     try:
-        answer, context_nodes, ui_actions = run_chat_query(
+        answer, context_nodes, ui_actions, graph_paths, graph_triples = run_chat_query(
             message=request.message,
             chat_history=request.chat_history,
             provider=request.provider,
@@ -1125,15 +1128,133 @@ def chat_endpoint(request: ChatRequest):
             api_key=request.api_key,
             embedding_api_key=request.embedding_api_key,
             use_rag=request.use_rag,
+            rag_mode=request.rag_mode,
             top_k=request.top_k
         )
-        return ChatResponse(answer=answer, context_nodes=context_nodes, ui_actions=ui_actions)
+        return ChatResponse(
+            answer=answer,
+            context_nodes=context_nodes,
+            ui_actions=ui_actions,
+            graph_paths=graph_paths,
+            graph_triples=graph_triples
+        )
     except HTTPException as he:
         raise he
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Chat execution failed: {str(e)}"
+        )
+
+@app.get("/graph/data")
+def get_graph_data():
+    """
+    Returns full Knowledge Graph topology (nodes, edges, communities, summaries, metrics)
+    for 3D visualization and inspector views.
+    """
+    from app.graph import graph_store
+    data = graph_store.to_dict()
+    summary = graph_store.get_graph_summary()
+    return {
+        "status": "ok",
+        "data": data,
+        "summary": summary
+    }
+
+@app.post("/graph/build")
+def build_graph(request: BuildGraphRequest):
+    """
+    Constructs or rebuilds the in-memory knowledge graph from the active vector store
+    using hybrid, heuristic, or LLM-powered extraction.
+    """
+    from app.graph_rag import build_knowledge_graph_from_dataset
+    if not store.has_vectors():
+        raise HTTPException(
+            status_code=400,
+            detail="No vectors are loaded in the system. Please upload data first."
+        )
+
+    try:
+        summary = build_knowledge_graph_from_dataset(
+            mode=request.mode,
+            provider=request.provider,
+            model=request.model,
+            api_key=request.api_key,
+            max_llm_samples=request.max_llm_samples
+        )
+        return {"status": "ok", "summary": summary}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to build knowledge graph: {str(e)}"
+        )
+
+@app.post("/graph/extract-triples")
+def extract_triples(request: ExtractTriplesRequest):
+    """
+    Extracts entities and relational triples from raw text for live inspection.
+    """
+    from app.graph_rag import extract_triples_with_llm
+    try:
+        triples = extract_triples_with_llm(
+            text=request.text,
+            provider=request.provider,
+            model=request.model,
+            api_key=request.api_key
+        )
+        return {"status": "ok", "triples": triples}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to extract triples: {str(e)}"
+        )
+
+@app.post("/graph/subgraph")
+def get_subgraph_endpoint(request: SubgraphRequest):
+    """
+    Extracts a local k-hop subgraph around the specified seed nodes.
+    """
+    from app.graph import graph_store
+    try:
+        subgraph = graph_store.get_subgraph(
+            seed_nodes=request.seed_nodes,
+            hops=request.hops,
+            max_nodes=request.max_nodes
+        )
+        return {"status": "ok", "subgraph": subgraph}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve subgraph: {str(e)}"
+        )
+
+@app.post("/graph/communities")
+def generate_communities_endpoint(
+    provider: str = Query("gemini"),
+    model: Optional[str] = Query(None),
+    api_key: Optional[str] = Query(None)
+):
+    """
+    Runs community detection and generates high-level summaries for all communities.
+    """
+    from app.graph import graph_store
+    from app.graph_rag import generate_community_summaries
+    try:
+        graph_store.detect_communities()
+        summaries = generate_community_summaries(
+            provider=provider,
+            model=model,
+            api_key=api_key
+        )
+        return {
+            "status": "ok",
+            "communities_count": len(graph_store.communities),
+            "summaries": summaries
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate community summaries: {str(e)}"
         )
 
 

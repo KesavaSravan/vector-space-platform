@@ -94,11 +94,13 @@ def run_chat_query(
     api_key: Optional[str] = None,
     embedding_api_key: Optional[str] = None,
     use_rag: bool = False,
+    rag_mode: str = "hybrid",
     top_k: int = 5
-) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
+) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[str]]:
     """
-    Orchestrates the LLM execution using LangChain, with optional RAG retrieval
-    from the VectorStore. Returns a tuple of (answer_text, context_nodes, ui_actions).
+    Orchestrates the LLM execution using LangChain, with Hybrid Graph RAG retrieval
+    (Vector + NetworkX Subgraphs + Community Summaries).
+    Returns (answer_text, context_nodes, ui_actions, graph_paths, graph_triples).
     """
     if not LANGCHAIN_CHAT_AVAILABLE:
         raise HTTPException(
@@ -107,10 +109,13 @@ def run_chat_query(
         )
 
     provider = provider.lower()
+    rag_mode = (rag_mode or "hybrid").lower()
     
     # 1. Retrieve RAG Context if requested
     context_nodes = []
     context_text_block = ""
+    graph_paths = []
+    graph_triples = []
     
     if use_rag:
         if not store.has_vectors():
@@ -118,160 +123,103 @@ def run_chat_query(
                 status_code=400,
                 detail="RAG is enabled, but no vectors are loaded in the system. Please upload data first."
             )
-            
+
         dim = store.get_dimension()
-        if not dim:
-            raise HTTPException(
-                status_code=400,
-                detail="Vector store dimension is not defined. Please upload valid vectors."
-            )
+        logger.info(f"Graph RAG: Retrieving context (mode={rag_mode}, dim={dim}).")
+
+        # Handle Community Global Summary Mode
+        if rag_mode == "community":
+            from app.graph import graph_store
+            from app.graph_rag import generate_community_summaries
+            if not graph_store.community_summaries:
+                generate_community_summaries(provider=provider, model=model, api_key=api_key)
             
-        logger.info(f"RAG: Retrieving contexts for message. Vector space dimension is {dim}.")
-        
-        # Retrieve stored embedding metadata
-        stored_provider = store.embedding_provider
-        stored_model = store.embedding_model
-        stored_key = store.embedding_api_key
-        
-        # Fallback to dimension-based defaults for legacy datasets (backwards compatibility)
-        if not stored_provider:
-            if dim == 768:
-                stored_provider = "gemini"
-                stored_model = "gemini-embedding-001"
-            elif dim == 1536:
-                stored_provider = "openai"
-                stored_model = "text-embedding-3-small"
-            elif dim == 384:
-                stored_provider = "sentence-transformers"
-                stored_model = "all-MiniLM-L6-v2"
+            comm_summaries = graph_store.community_summaries
+            if comm_summaries:
+                context_text_block += "### Global Community Clusters & Corpus Overview:\n"
+                for cid, summary_text in comm_summaries.items():
+                    context_text_block += f"- **Community #{cid}**: {summary_text}\n"
             else:
-                stored_provider = "precomputed"
-                stored_model = "unknown"
+                context_text_block += f"Corpus contains {len(graph_store.communities)} topological clusters.\n"
+
+        # Handle Hybrid / Vector / Graph Mode
+        else:
+            try:
+                from app.graph_rag import retrieve_graph_rag_context
+                graph_ctx = retrieve_graph_rag_context(
+                    query=message,
+                    top_k=top_k,
+                    hops=2,
+                    embedding_api_key=embedding_api_key
+                )
                 
-        # If dataset was uploaded as precomputed, we cannot dynamically embed text queries
-        if stored_provider in ["precomputed", "unknown"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"This dataset was loaded with precomputed {dim}-D embeddings. The system does not know which embedding model was used. "
-                       "Please regenerate the dataset embeddings using the AI Text Vectorization panel to enable semantic RAG chat."
-            )
-            
-        # Determine the API key to use
-        # Priority: 1) Overriden key in chat query, 2) Stored key from ingestion, 3) Environment variable
-        emb_key = embedding_api_key or stored_key
-        if not emb_key:
-            if stored_provider == "gemini":
-                emb_key = os.getenv("GEMINI_API_KEY")
-            elif stored_provider == "openai":
-                emb_key = os.getenv("OPENAI_API_KEY")
-            elif stored_provider == "huggingface":
-                emb_key = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACEHUB_API_TOKEN")
-                
-        # Validate API key presence for providers that require it
-        if stored_provider in ["gemini", "openai", "huggingface"] and not emb_key:
-            key_name = "Gemini API Key" if stored_provider == "gemini" else "OpenAI API Key" if stored_provider == "openai" else "Hugging Face Token"
-            raise HTTPException(
-                status_code=400,
-                detail=f"The active dataset was created using '{stored_provider}' ({stored_model}), which requires an API key. "
-                       f"Please provide your {key_name} in the Chat settings or configure it in the server environment."
-            )
-            
-        emb_provider = stored_provider
-        emb_model = stored_model
-            
-        try:
-            # Embed the query
-            query_embeddings, _ = generate_embeddings(
-                provider=emb_provider,
-                documents=[message],
-                model=emb_model,
-                api_key=emb_key
-            )
-            
-            if query_embeddings:
-                query_emb = query_embeddings[0]
-                
-                # Check for dimension alignment!
-                if len(query_emb) != dim:
-                    logger.info(
-                        f"RAG: Dimension mismatch ({dim}-D store vs {len(query_emb)}-D query). "
-                        "Falling back to keyword-based text search."
-                    )
-                    all_vectors = store.get_all_vectors()
-                    matches = text_based_keyword_search(message, all_vectors, top_k)
-                    context_text_block = (
-                        f"Note: Vector dimension mismatch ({dim}-D dataset vs {len(query_emb)}-D query). "
-                        "Retrieved relevant context points using keyword text search instead of vector similarity.\n"
-                    )
-                else:
-                    # Query the persistent FAISS index directly inside VectorStore
-                    matches = store.query_similarity(query_emb, top_k)
-                
+                vector_matches = graph_ctx.get("vector_results", [])
+                graph_triples = graph_ctx.get("triples_text", [])
+                graph_paths = graph_ctx.get("paths", [])
+                paths_text = graph_ctx.get("paths_text", [])
+
                 # Map retrieved matches into context_nodes
-                for idx, match in enumerate(matches, 1):
-                    vector_info = store.get_vector(match["id"])
+                for idx, match in enumerate(vector_matches, 1):
+                    vid = match["id"]
+                    vector_info = store.get_vector(vid)
                     if vector_info:
-                        # Append to context nodes for UI highlight
                         context_nodes.append({
-                            "id": match["id"],
-                            "label": match["label"],
-                            "score": match["score"],
-                            "metadata": match["metadata"]
+                            "id": vid,
+                            "label": match.get("label", vid),
+                            "score": match.get("score", 0.0),
+                            "metadata": match.get("metadata", {})
                         })
                         
-                        meta = match["metadata"]
+                        meta = match.get("metadata", {})
                         text = get_vector_text(vector_info)
                         severity = meta.get("severity", meta.get("priority", "Low"))
                         category = meta.get("category", meta.get("Category", "General"))
-                        ci = meta.get("configuration_item", meta.get("Configuration item", "N/A"))
+                        ci = meta.get("configuration_item", meta.get("Configuration item", meta.get("service", "N/A")))
                         grp = meta.get("assignment_group", meta.get("Assignment group", "N/A"))
                         state_val = meta.get("state", meta.get("State", "N/A"))
                         res_notes = meta.get("resolution_notes", meta.get("Resolution notes", ""))
                         
-                        ticket_summary = f"[{idx}] Ticket ID: {match['id']} | Priority: {severity} | State: {state_val} | Category: {category} | CI: {ci} | Group: {grp}\n"
+                        ticket_summary = f"[{idx}] Document/Ticket ID: {vid} | Priority: {severity} | State: {state_val} | Category: {category} | Component/CI: {ci}\n"
                         ticket_summary += f"    Content: \"{text}\"\n"
                         if res_notes:
-                            ticket_summary += f"    Resolution Notes: \"{res_notes}\"\n"
+                            ticket_summary += f"    Resolution/Notes: \"{res_notes}\"\n"
                         context_text_block += ticket_summary
-        except Exception as e:
-            logger.error(f"RAG Retrieval failed: {str(e)}")
-            context_text_block = f"Note: Context retrieval failed due to: {str(e)}.\n"
+
+                # Append Knowledge Graph facts & Multi-Hop Paths if hybrid/graph mode
+                if rag_mode in ["hybrid", "graph"] and (graph_triples or paths_text):
+                    context_text_block += "\n--- EXTRACTED KNOWLEDGE GRAPH FACTS & SUBGRAPH RELATIONS ---\n"
+                    if paths_text:
+                        context_text_block += "Multi-Hop Reasoning Paths:\n"
+                        for p in paths_text:
+                            context_text_block += f"  • {p}\n"
+                    if graph_triples:
+                        context_text_block += "Direct & 2-Hop Subgraph Triples:\n"
+                        for t in graph_triples[:20]:
+                            context_text_block += f"  • {t}\n"
+
+            except Exception as e:
+                logger.error(f"Graph RAG Retrieval failed: {str(e)}")
+                context_text_block = f"Note: Context retrieval encountered an error: {str(e)}.\n"
 
     # 2. Build system instructions
     system_prompt = (
-        "You are the ServiceNow AI Incident & ITSM Resolution Copilot for the Vector Space Platform.\n"
-        "Your role is to assist IT Engineers, Service Desk Analysts, SREs, and IT Managers in analyzing ServiceNow incidents, problems, changes, and operational tickets.\n"
+        "You are an Advanced Graph RAG AI Assistant and Domain Reasoning Copilot for the Vector Space Platform.\n"
+        "You analyze datasets, ServiceNow ITSM tickets, logs, knowledge bases, and multi-dimensional vector spaces.\n"
+        "You leverage both dense semantic similarity and structured knowledge graph relational triples (entities, multi-hop dependencies, causes, and communities).\n"
     )
     
     if use_rag:
         system_prompt += (
-            "\nRetrieved ServiceNow Context from Vector Space:\n"
-            f"{context_text_block}\n"
-            "MANDATORY RESPONSE FORMATTING GUIDELINES:\n"
-            "Structure your answer using this professional, clean ServiceNow ITSM Markdown format:\n\n"
-            "### **Root-cause pattern**\n"
-            "Start by mentioning all cited incident IDs (e.g., INC0010001, INC0010002) and summarizing the common pattern:\n"
-            "* **Symptom:** Detailed description of what users or systems experience.\n"
-            "* **Technical detail:** Exact error messages, protocols, services, or stack traces.\n"
-            "* **Root cause:** The core underlying fault identified across the matching tickets.\n\n"
-            "---\n\n"
-            "### Proven resolution steps (from the tickets)\n"
-            "Provide a clear Markdown Table summarizing the verified fixes from the retrieved tickets:\n"
-            "| Ticket | Component / CI | Key resolution note |\n"
-            "|---|---|---|\n"
-            "| **INC...** (`ci-name`) | Action taken in ticket |\n\n"
-            "---\n\n"
-            "### Step-by-step \"how-to\" for resolving this issue\n"
-            "Provide a numbered, actionable IT remediation guide (e.g., 1. Confirm the issue, 2. Apply fix, 3. Validate, 4. Prevent recurrence checklist).\n\n"
-            "---\n\n"
-            "### What the data tells us about the environment\n"
-            "Provide a summary table and insights regarding impacted systems:\n"
-            "| Affected CIs | Assignment Group | Priority Trend |\n"
-            "|---|---|---|\n"
-            "| `ci-name` | **Team Name** | **Critical / High / Medium** |\n\n"
-            "* **Recurring pattern:** Operational summary of frequency and affected modules.\n"
-            "* **Prevention & Governance:** Proactive monitoring, configuration, and maintenance recommendations.\n\n"
-            "ALWAYS cite specific Ticket IDs (e.g. INC0010001). Never use vague statements when ticket details are available.\n"
+            "\nRetrieved Knowledge Context (Dense Vectors + Knowledge Graph Triples):\n"
+            f"{context_text_block}\n\n"
+            "RESPONSE GUIDELINES:\n"
+            "1. Synthesize both the document text and the Knowledge Graph relationships (e.g. dependencies, causes, configuration items).\n"
+            "2. If multi-hop paths exist, explicitly mention how entities connect (e.g., 'Entity A affects Entity B which leads to Entity C').\n"
+            "3. Cite specific Document/Ticket IDs (e.g. INC0010001 or doc_12) and entity names.\n"
+            "4. Provide a structured, clean Markdown breakdown with:\n"
+            "   - **Summary / Root-Cause Pattern**\n"
+            "   - **Key Relational Findings (Graph Insights & Entities)**\n"
+            "   - **Recommended Actions / Resolution Steps**\n"
         )
     else:
         system_prompt += (
@@ -363,7 +311,7 @@ def run_chat_query(
         response = llm.invoke(messages)
         answer = str(response.content)
         cleaned_answer, ui_actions = parse_ui_actions(answer)
-        return cleaned_answer, context_nodes, ui_actions
+        return cleaned_answer, context_nodes, ui_actions, graph_paths, graph_triples
     except Exception as e:
         logger.error(f"LLM generation failed: {str(e)}")
         raise HTTPException(
