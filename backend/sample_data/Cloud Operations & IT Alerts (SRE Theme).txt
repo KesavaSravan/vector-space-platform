@@ -1,0 +1,20 @@
+Database migration failed due to lock timeout on tables
+PostgreSQL connection pool exhausted on primary database server
+Disk space critical: root partition is at 98 percent capacity
+Read-only filesystem error encountered during cache write operations
+Slow database query detected: SELECT FROM transactions taking over 5000ms
+Brute force login attempt detected on admin panel endpoint
+Multiple failed SSH authentication attempts from unknown IP address
+Invalid JWT signature detected on customer account api
+Unauthorized access attempt blocked on internal security group
+API key rotation initiated due to credential exposure warning
+Vite frontend bundle size exceeded the recommended limit of 500kb
+High response latency on home page landing assets
+React component re-rendering causing UI thread lag on search list
+Webpack compilation failed due to missing module import path
+JavaScript runtime error: Cannot read properties of undefined on billing page
+CPU spike: Kubernetes pod web-frontend utilization at 95 percent
+Memory leak warning: RAM utilization increased by 40 percent in 10 minutes
+OutOfMemory error: JVM process terminated abnormally on payment-api
+High container restart count on payment gateway microservice
+CPU load average exceeds threshold on cache-redis container

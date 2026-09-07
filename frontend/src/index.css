@@ -1,0 +1,172 @@
+/* Global resets */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #0A0C12;
+  color: #E7E9F0;
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+}
+
+/* Custom scrollbars for dark mode panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0A0C12;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #232838;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #7C5CFF;
+}
+
+/* Custom class for scrollable panels */
+.scrollable-panel {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  height: 100%;
+}
+
+/* Animations */
+@keyframes pulseGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 229, 199, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(0, 229, 199, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 229, 199, 0);
+  }
+}
+
+.selected-glow {
+  animation: pulseGlow 2s infinite;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* MUI Customizations to force display/mono font families */
+.font-display {
+  font-family: 'Space Grotesk', sans-serif !important;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace !important;
+}
+
+/* Glassmorphism helpers */
+.glass-panel {
+  background: rgba(17, 20, 28, 0.75) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(35, 40, 56, 0.6) !important;
+}
+
+/* Landing Page Keyframe Animations */
+@keyframes floatAnim {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(0.5deg);
+  }
+}
+
+@keyframes floatReverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(8px) rotate(-0.5deg);
+  }
+}
+
+@keyframes shimmerText {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes pulseLine {
+  0% {
+    left: 0%;
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0.2;
+  }
+}
+
+@keyframes glowBorder {
+  0%, 100% {
+    border-color: rgba(124, 92, 255, 0.3);
+    box-shadow: 0 0 15px rgba(124, 92, 255, 0.15);
+  }
+  50% {
+    border-color: rgba(0, 229, 199, 0.6);
+    box-shadow: 0 0 25px rgba(0, 229, 199, 0.25);
+  }
+}
+
+.floating-card-1 {
+  animation: floatAnim 4s ease-in-out infinite;
+}
+
+.floating-card-2 {
+  animation: floatReverse 5s ease-in-out infinite;
+}
+
+.shimmer-gradient-text {
+  background: linear-gradient(90deg, #E7E9F0 0%, #00E5C7 35%, #7C5CFF 70%, #E7E9F0 100%);
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmerText 6s linear infinite;
+}
+
+.glowing-launch-btn {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.glowing-launch-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 0 30px rgba(0, 229, 199, 0.4) !important;
+}
+
