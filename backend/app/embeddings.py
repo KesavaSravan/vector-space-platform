@@ -145,22 +145,46 @@ def get_gemini_client(api_key: Optional[str] = None) -> Optional[object]:
             return None
     return _gemini_client
 
-def get_local_model() -> object:
+# Dedicated local disk cache directory for sentence transformers
+MODEL_CACHE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".model_cache"))
+os.makedirs(MODEL_CACHE_DIR, exist_ok=True)
+
+def get_local_model(model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> object:
     """
-    Lazy-loads and caches the local SentenceTransformer fallback model in memory.
+    Loads and caches the local SentenceTransformer model in memory and on local disk (.model_cache).
+    Prioritizes fast offline loading from disk cache without making slow HTTP requests.
     """
     global _local_model
-    if _local_model is None:
-        logger.info("Embedding Provider: Local MiniLM | Model not in memory. Loading all-MiniLM-L6-v2 lazily...")
-        t0 = time.time()
-        try:
-            from sentence_transformers import SentenceTransformer
-            _local_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-            logger.info(f"Loaded sentence-transformers/all-MiniLM-L6-v2 in {time.time() - t0:.2f}s")
-        except Exception as e:
-            logger.error(f"Failed to load sentence-transformers/all-MiniLM-L6-v2: {str(e)}")
-            raise RuntimeError(f"Failed to load local fallback model: {str(e)}")
-    return _local_model
+    if _local_model is not None:
+        return _local_model
+
+    from sentence_transformers import SentenceTransformer
+    t0 = time.time()
+    
+    # 1. First attempt: Load from local disk cache offline
+    try:
+        _local_model = SentenceTransformer(
+            model_name,
+            cache_folder=MODEL_CACHE_DIR,
+            local_files_only=True
+        )
+        logger.info(f"Loaded '{model_name}' from local disk cache in {time.time() - t0:.2f}s (Instant Offline)")
+        return _local_model
+    except Exception:
+        logger.info(f"Model not found in local disk cache. Downloading '{model_name}' to {MODEL_CACHE_DIR}...")
+
+    # 2. Second attempt: Download once and persist to cache folder
+    try:
+        _local_model = SentenceTransformer(
+            model_name,
+            cache_folder=MODEL_CACHE_DIR,
+            local_files_only=False
+        )
+        logger.info(f"Successfully downloaded and cached '{model_name}' in {time.time() - t0:.2f}s")
+        return _local_model
+    except Exception as e:
+        logger.error(f"Failed to load sentence-transformers model: {str(e)}")
+        raise RuntimeError(f"Failed to load local fallback model: {str(e)}")
 
 def get_gemini_embeddings(
     documents: List[str],

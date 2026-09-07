@@ -47,6 +47,8 @@ env/
 ENV/
 backend/venv/
 backend/.venv/
+.model_cache/
+backend/.model_cache/
 .pytest_cache/
 .coverage
 htmlcov/
