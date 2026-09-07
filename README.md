@@ -4,10 +4,14 @@ A production-quality 3D platform for uploading, analyzing, clustering, and visua
 
 ## Key Features
 - **3D Visualization**: OrbitControls, Grid and Coordinate helper axes, and custom shaders/instancedMesh rendering supporting 100k+ data points.
+- **Embedded Graph RAG (Knowledge Graph + Vector DB)**: In-memory `NetworkX` graph engine integrated with `FAISS` vector search. Extracts schema-free `(Subject, Relation, Object)` semantic triples and multi-hop paths without external graph databases.
+- **3D Relational Edges & Multi-Hop Path Glow**: Renders 3D relationship curves across data points in Three.js and animates active AI reasoning chains with a glowing neon trail.
 - **Dimensionality Reduction**: PCA, t-SNE, and UMAP algorithms.
-- **Automatic Clustering**: Ingested vectors are partitioned into clusters automatically upon loading using KMeans, dynamically color-mapping the 3D space and dashboard metrics.
+- **Automatic Clustering**: Ingested vectors are partitioned into clusters automatically upon loading using KMeans/HDBSCAN/DBSCAN, dynamically color-mapping the 3D space and dashboard metrics.
+- **Community Detection & Global Summarization**: Detects topological communities in the graph and synthesizes macro-level executive summaries (Microsoft GraphRAG style).
 - **Similarity Search**: Cosine similarity search using backend FAISS indices to perform real-time nearest neighbor retrieval and highlight links.
-- **AI RAG Chatbot**: Interactive chat log using LangChain (Groq Llama 3.3 & Gemini) to converse with your dataset. Dynamically prompts for API keys and injects context nodes.
+- **AI Graph RAG Chatbot**: Interactive chat log using LangChain (Groq Llama 3.3 / GPT-OSS 120B & Gemini) with selectable RAG modes (`Hybrid Graph`, `Vector Only`, `Global Summary`).
+- **Knowledge Graph Inspector**: Dedicated inspector tab displaying node/edge metrics, graph density, central hub entities, and relation distributions.
 - **Dockable Workspace Guide**: Responsive capability guide that can be docked side-by-side next to the 3D scene or viewed fullscreen, toggleable via a header toolbar button.
 - **Self-Contained Data Exchange**: Export and import vector datasets alongside their embedding metadata (provider, model, dimensions), recreating the FAISS index without regenerating vectors.
 - **Analytics**: Hand-drawn dashboard graphs showing cluster/severity percentages and metrics (average similarity, outliers).
@@ -142,6 +146,41 @@ To guarantee platform resilience, if the primary **Gemini** cloud embedding gene
 - **Startup Diagnostics**: The backend executes configuration checks and diagnostic runs on startup, reporting selected default providers and logging state info.
 - **Diagnostic Endpoint**: Run `GET http://localhost:8000/embedding-diagnostic` to inspect API configuration, masked environment key setups, and resolved `.env` configurations.
 - **Dotenv Loading**: Searches and loads `.env` configurations from the immediate working directory, parent `backend/` directory, and the project root directory recursively.
+
+---
+
+## Graph RAG & Knowledge Graph Architecture
+
+The platform features an embedded **Hybrid Graph RAG** engine that combines dense vector retrieval (`FAISS`) with an in-memory topological Knowledge Graph (`NetworkX`):
+
+```mermaid
+flowchart LR
+    A[Documents / Tickets] --> B[Dense Embeddings & FAISS Index]
+    A --> C[Dynamic Entity & Relation Extraction]
+    C --> D[(Embedded NetworkX Graph)]
+    
+    Q[User Query] --> E[Hybrid Retriever]
+    E -->|Cosine Similarity| B
+    E -->|Multi-Hop Traversal| D
+    
+    D --> F[Context Synthesizer]
+    B --> F
+    F --> G[AI Multi-Hop Reasoner]
+    G --> H[Answer + 3D Path Trail]
+```
+
+### Graph RAG Modes:
+1. **Hybrid Graph RAG**: Combines top-k dense vector matches with 1–2 hop subgraph traversal, extracting connecting paths across entities and feeding structured triples to the LLM.
+2. **Vector Only**: Standard dense similarity retrieval via FAISS/NumPy.
+3. **Global Summary (Community RAG)**: Groups entities into topological communities using modularity optimization and synthesizes high-level summaries across thematic clusters.
+
+### Graph API Endpoints:
+- `GET /graph/data`: Returns full graph topology (nodes, edges, communities, metrics).
+- `POST /graph/build`: Rebuilds the in-memory knowledge graph using `hybrid`, `heuristic`, or `llm` mode.
+- `POST /graph/extract-triples`: Extracts entity-relation triples from raw text.
+- `POST /graph/subgraph`: Extracts localized k-hop subgraph around seed nodes.
+- `POST /graph/communities`: Runs community detection and generates cluster summaries.
+- `POST /chat`: AI assistant endpoint with `rag_mode` selection (`hybrid`, `vector`, `community`).
 
 ---
 
