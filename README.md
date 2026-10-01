@@ -27,17 +27,47 @@ vector-space-platform/
 ├── backend/
 │   ├── Dockerfile
 │   ├── requirements.txt
+│   ├── .model_cache/                     # Local persistent cache for offline SentenceTransformers
 │   ├── sample_data/
 │   │   ├── sample_ingest_data.csv
-│   │   └── sample_ingest_data.xlsx
+│   │   ├── sample_ingest_data.xlsx
+│   │   └── servicenow_incidents_sample.xlsx
 │   └── app/
+│       ├── main.py                       # FastAPI application & REST routing
+│       ├── graph.py                      # NetworkX Embedded Knowledge Graph engine
+│       ├── graph_rag.py                  # Hybrid Graph RAG, triple extraction & multi-hop reasoner
+│       ├── store.py                      # Re-entrant in-memory vector & graph synchronized store
+│       ├── embeddings.py                 # Multi-provider embeddings & offline disk cache loader
+│       ├── reduction.py                  # PCA, t-SNE, and UMAP dimensionality reduction
+│       ├── clustering.py                 # KMeans, HDBSCAN, and DBSCAN clustering
+│       ├── similarity.py                 # FAISS & NumPy vectorized cosine/euclidean search
+│       ├── chat.py                       # LangChain Groq / Gemini Graph RAG chat copilot
+│       └── models.py                     # Pydantic data schemas
 └── frontend/
     ├── Dockerfile
     ├── nginx.conf
     ├── index.html
     ├── package.json
     └── src/
+        ├── App.jsx
+        ├── api/client.js                 # Axios API client with Graph RAG endpoints
+        ├── context/AppContext.jsx        # Global state with Graph topology & RAG mode
+        └── components/
+            ├── Visualization/
+            │   ├── Scene.jsx             # Three.js 3D Coordinate Canvas
+            │   ├── PointCloud.jsx        # InstancedMesh point cloud renderer
+            │   ├── GraphConnectionLines.jsx # 3D Knowledge Graph relational edges & path trails
+            │   ├── ConnectionLines.jsx   # Nearest neighbor similarity links
+            │   └── ChatConnectionLines.jsx # Active context reference links
+            ├── Details/
+            │   ├── AIChatPanel.jsx       # Graph RAG AI Assistant with multi-hop citations
+            │   ├── GraphInspectorPanel.jsx # Dedicated Knowledge Graph topology inspector
+            │   └── VectorDetails.jsx     # Selected node metadata & properties
+            └── Layout/
+                ├── RightPanel.jsx        # Multi-tab sidebar (Details, Matches, Stats, Chat, Graph)
+                └── TopBar.jsx            # Action toolbar
 ```
+
 
 ---
 
@@ -129,9 +159,10 @@ The platform supports multiple AI text vectorization providers which can be chos
    - Configuration: Read from the `GEMINI_API_KEY` environment variable.
    - Optimization: Employs batch processing, automatic input cleaning, and exponential backoff retry mechanisms to handle 429 rate limits.
    - Platform Limit: Enforces a strict quota limit of 100 records per upload to prevent Google Cloud free-tier quota exhaustion.
-2. **Sentence Transformers (Local Fallback)**:
+2. **Sentence Transformers (Local Fallback & Offline Engine)**:
    - Model: `all-MiniLM-L6-v2` (384 dimensions)
-   - Cache & Lazy Loading: Cached locally on the backend. The model is **lazy-loaded only when requested** to minimize startup memory overhead.
+   - Persistent Local Disk Cache: Model weights are cached locally inside `backend/.model_cache/`.
+   - Instant Offline Startup (< 0.5s): Automatically loads from local disk with `local_files_only=True` to eliminate redundant Hugging Face Hub downloads and network latency.
 3. **Hugging Face (Cloud API)**:
    - Integration: Utilizes LangChain (`langchain-huggingface`) to call Hugging Face Inference API models.
    - Model: Default is `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions), but can be customized.
